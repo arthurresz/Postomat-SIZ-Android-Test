@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0-standard-saf-test"
+        versionCode = 3
+        versionName = "3.0-standard-admin-beta"
     }
 
     buildTypes {
