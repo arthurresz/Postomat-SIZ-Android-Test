@@ -19,12 +19,12 @@ jobs:
       - name: Show Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          sdkmanager --version
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
 
       - name: Accept licenses and install Android SDK 35
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
