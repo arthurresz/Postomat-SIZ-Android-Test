@@ -13,9 +13,14 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
 
 public class MainActivity extends Activity {
     private static final int REQ_TREE = 2001;
@@ -35,7 +40,7 @@ public class MainActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setAllowFileAccess(true);
+        settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -48,13 +53,46 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (url != null && url.startsWith("file:///android_asset/")) return false;
-                return true;
+                return url == null || !url.startsWith("https://postomat.local/");
             }
         });
 
         setContentView(webView);
-        webView.loadUrl("file:///android_asset/index.html");
+        try {
+            String html = loadClassicUiHtml();
+            webView.loadDataWithBaseURL("https://postomat.local/", html, "text/html", "UTF-8", null);
+        } catch (Exception e) {
+            webView.loadDataWithBaseURL(
+                    "https://postomat.local/",
+                    "<html><body style='font-family:sans-serif;padding:24px'><h2>Ошибка загрузки интерфейса</h2><p>" + escapeHtml(e.toString()) + "</p></body></html>",
+                    "text/html",
+                    "UTF-8",
+                    null);
+        }
+    }
+
+    private String loadClassicUiHtml() throws Exception {
+        String b64;
+        try (InputStream in = getAssets().open("classic_ui.b64")) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            b64 = out.toString("UTF-8").replace("\n", "").replace("\r", "").trim();
+        }
+        byte[] gz = Base64.decode(b64, Base64.DEFAULT);
+        try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(gz));
+             ByteArrayOutputStream html = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = gzip.read(buf)) > 0) html.write(buf, 0, n);
+            return html.toString("UTF-8");
+        }
+    }
+
+    private String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     @Override
