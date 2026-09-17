@@ -1,162 +1,270 @@
 package com.rsteel.postomatsiz.saftest;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
-import android.graphics.Color;
+import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
-import android.view.Gravity;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+import android.provider.DocumentsContract;
+import android.util.Base64;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
-    private static final int REQ_CREATE_XLSX = 1001;
-    private TextView status;
+    private static final int REQ_TREE = 2001;
+    private static final String PREFS = "postomat_siz_native";
+    private static final String PREF_TREE_URI = "tree_uri";
+
+    private WebView webView;
+    private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        buildUi();
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+
+        webView = new WebView(this);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setSupportZoom(false);
+        settings.setLoadWithOverviewMode(false);
+        settings.setUseWideViewPort(false);
+        settings.setMediaPlaybackRequiresUserGesture(true);
+
+        webView.addJavascriptInterface(new NativeStoreBridge(), "NativeStore");
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url != null && url.startsWith("file:///android_asset/")) return false;
+                return true;
+            }
+        });
+
+        setContentView(webView);
+        webView.loadUrl("file:///android_asset/index.html");
     }
 
-    private void buildUi() {
-        int pad = dp(20);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundColor(Color.rgb(245, 248, 252));
-
-        TextView title = new TextView(this);
-        title.setText("Тест штатного сохранения");
-        title.setTextSize(24);
-        title.setTextColor(Color.rgb(23, 32, 51));
-        title.setGravity(Gravity.CENTER);
-        root.addView(title, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView info = new TextView(this);
-        info.setText("Сборка обычным Android toolchain. Разрешение на доступ ко всей памяти не используется. Нажмите кнопку и выберите папку в системном окне Huawei.");
-        info.setTextSize(15);
-        info.setTextColor(Color.rgb(90, 105, 125));
-        info.setPadding(0, dp(18), 0, dp(18));
-        root.addView(info, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        Button save = new Button(this);
-        save.setText("СОХРАНИТЬ ТЕСТОВЫЙ XLSX");
-        save.setAllCaps(false);
-        save.setTextSize(16);
-        save.setOnClickListener(v -> openSystemSaveDialog());
-        root.addView(save, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(58)));
-
-        status = new TextView(this);
-        status.setText("Ожидание проверки");
-        status.setTextSize(14);
-        status.setTextColor(Color.rgb(65, 80, 100));
-        status.setPadding(0, dp(18), 0, 0);
-        root.addView(status, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        setContentView(root);
+    @Override
+    public void onBackPressed() {
+        if (webView != null) {
+            webView.evaluateJavascript(
+                    "(function(){try{if(typeof appBack==='function'&&typeof canAppBack==='function'&&canAppBack()){appBack();return 'handled';}}catch(e){}return 'none';})()",
+                    value -> {
+                        if (value == null || !value.contains("handled")) MainActivity.super.onBackPressed();
+                    });
+        } else {
+            super.onBackPressed();
+        }
     }
 
-    private void openSystemSaveDialog() {
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        intent.putExtra(Intent.EXTRA_TITLE, "Postomat_SIZ_SAF_TEST.xlsx");
+    private Uri getTreeUri() {
+        String raw = prefs.getString(PREF_TREE_URI, "");
+        if (raw == null || raw.isEmpty()) return null;
         try {
-            startActivityForResult(intent, REQ_CREATE_XLSX);
-            status.setText("Открыто системное окно сохранения…");
-        } catch (ActivityNotFoundException ex) {
-            status.setText("На устройстве не найден системный выбор файла: " + ex.getMessage());
+            return Uri.parse(raw);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean hasPersistedTreePermission(Uri treeUri) {
+        if (treeUri == null) return false;
+        for (android.content.UriPermission p : getContentResolver().getPersistedUriPermissions()) {
+            if (treeUri.equals(p.getUri()) && p.isReadPermission() && p.isWritePermission()) return true;
+        }
+        return false;
+    }
+
+    private Uri getRootDocumentUri(Uri treeUri) {
+        return DocumentsContract.buildDocumentUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri));
+    }
+
+    private String displayName(Uri documentUri) {
+        String[] projection = {DocumentsContract.Document.COLUMN_DISPLAY_NAME};
+        try (Cursor c = getContentResolver().query(documentUri, projection, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
+    private Uri findChild(Uri parentDocumentUri, String name) {
+        String parentId = DocumentsContract.getDocumentId(parentDocumentUri);
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(parentDocumentUri, parentId);
+        String[] projection = {
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME
+        };
+        try (Cursor c = getContentResolver().query(children, projection, null, null, null)) {
+            if (c != null) {
+                while (c.moveToNext()) {
+                    if (name.equals(c.getString(1))) {
+                        return DocumentsContract.buildDocumentUriUsingTree(parentDocumentUri, c.getString(0));
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private Uri ensureDirectory(Uri parentDocumentUri, String name) throws Exception {
+        Uri existing = findChild(parentDocumentUri, name);
+        if (existing != null) return existing;
+        Uri created = DocumentsContract.createDocument(
+                getContentResolver(),
+                parentDocumentUri,
+                DocumentsContract.Document.MIME_TYPE_DIR,
+                name);
+        if (created == null) throw new IllegalStateException("Не удалось создать папку " + name);
+        return created;
+    }
+
+    private Uri resolvePostomatRoot() throws Exception {
+        Uri treeUri = getTreeUri();
+        if (!hasPersistedTreePermission(treeUri)) throw new IllegalStateException("Папка хранения не выбрана");
+        Uri root = getRootDocumentUri(treeUri);
+        if ("Postomat_SIZ".equalsIgnoreCase(displayName(root))) return root;
+        return ensureDirectory(root, "Postomat_SIZ");
+    }
+
+    private String normalizeRelativePath(String incoming) {
+        String p = incoming == null ? "" : incoming.replace('\\', '/');
+        int marker = p.indexOf("Postomat_SIZ/");
+        if (marker >= 0) p = p.substring(marker + "Postomat_SIZ/".length());
+        while (p.startsWith("/")) p = p.substring(1);
+        return p;
+    }
+
+    private String mimeFor(String fileName) {
+        String n = fileName.toLowerCase();
+        if (n.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (n.endsWith(".json")) return "application/json";
+        if (n.endsWith(".csv")) return "text/csv";
+        if (n.endsWith(".txt")) return "text/plain";
+        return "application/octet-stream";
+    }
+
+    private Uri ensureFile(Uri parent, String fileName, String mime) throws Exception {
+        Uri existing = findChild(parent, fileName);
+        if (existing != null) return existing;
+        Uri created = DocumentsContract.createDocument(getContentResolver(), parent, mime, fileName);
+        if (created == null) throw new IllegalStateException("Не удалось создать файл " + fileName);
+        return created;
+    }
+
+    private Uri resolveDocument(String incomingPath, boolean createFile) throws Exception {
+        String rel = normalizeRelativePath(incomingPath);
+        if (rel.isEmpty()) throw new IllegalArgumentException("Пустой путь");
+        String[] rawParts = rel.split("/");
+        List<String> parts = new ArrayList<>();
+        for (String part : rawParts) if (part != null && !part.trim().isEmpty()) parts.add(part.trim());
+        if (parts.isEmpty()) throw new IllegalArgumentException("Пустой путь");
+
+        Uri current = resolvePostomatRoot();
+        for (int i = 0; i < parts.size() - 1; i++) current = ensureDirectory(current, parts.get(i));
+        String fileName = parts.get(parts.size() - 1);
+        if (!createFile) return findChild(current, fileName);
+        return ensureFile(current, fileName, mimeFor(fileName));
+    }
+
+    public class NativeStoreBridge {
+        @JavascriptInterface
+        public boolean hasRootFolder() {
+            return hasPersistedTreePermission(getTreeUri());
+        }
+
+        @JavascriptInterface
+        public String getRootFolderLabel() {
+            Uri tree = getTreeUri();
+            if (!hasPersistedTreePermission(tree)) return "Папка не выбрана";
+            try {
+                Uri root = getRootDocumentUri(tree);
+                String name = displayName(root);
+                if ("Postomat_SIZ".equalsIgnoreCase(name)) return "Выбрано: " + name;
+                return "Выбрано: " + (name.isEmpty() ? "папка" : name) + " → Postomat_SIZ";
+            } catch (Exception e) {
+                return "Папка выбрана";
+            }
+        }
+
+        @JavascriptInterface
+        public void chooseRootFolder() {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION |
+                        Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+                startActivityForResult(intent, REQ_TREE);
+            });
+        }
+
+        @JavascriptInterface
+        public String saveBase64File(String path, String base64) {
+            try {
+                Uri target = resolveDocument(path, true);
+                byte[] data = Base64.decode(base64, Base64.DEFAULT);
+                try (OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
+                    if (out == null) throw new IllegalStateException("Нет доступа к файлу");
+                    out.write(data);
+                    out.flush();
+                }
+                return "Postomat_SIZ/" + normalizeRelativePath(path);
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public boolean deleteFile(String path) {
+            try {
+                Uri target = resolveDocument(path, false);
+                return target != null && DocumentsContract.deleteDocument(getContentResolver(), target);
+            } catch (Exception e) {
+                return false;
+            }
         }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_CREATE_XLSX) return;
-
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            status.setText("Сохранение отменено.");
-            return;
-        }
+        if (requestCode != REQ_TREE) return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
 
         Uri uri = data.getData();
-        try (OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
-            if (out == null) throw new IOException("ContentResolver вернул пустой OutputStream");
-            out.write(buildMinimalXlsx());
-            out.flush();
-            status.setText("УСПЕХ: XLSX сохранён через системное окно.\n" + uri);
-        } catch (Exception ex) {
-            status.setText("ОШИБКА ЗАПИСИ: " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
+        int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try {
+            getContentResolver().takePersistableUriPermission(uri, flags);
+            prefs.edit().putString(PREF_TREE_URI, uri.toString()).apply();
+            if (webView != null) {
+                webView.post(() -> webView.evaluateJavascript(
+                        "if(typeof onNativeFolderSelected==='function'){onNativeFolderSelected('ok');}", null));
+            }
+        } catch (Exception ignored) {
         }
     }
 
-    private byte[] buildMinimalXlsx() throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
-            put(zip, "[Content_Types].xml",
-                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                    "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
-                    "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
-                    "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
-                    "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
-                    "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" +
-                    "</Types>");
-
-            put(zip, "_rels/.rels",
-                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-                    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
-                    "</Relationships>");
-
-            put(zip, "xl/workbook.xml",
-                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                    "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
-                    "<sheets><sheet name=\"Тест\" sheetId=\"1\" r:id=\"rId1\"/></sheets>" +
-                    "</workbook>");
-
-            put(zip, "xl/_rels/workbook.xml.rels",
-                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-                    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
-                    "</Relationships>");
-
-            put(zip, "xl/worksheets/sheet1.xml",
-                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-                    "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
-                    "<sheetData>" +
-                    "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Постомат СИЗ</t></is></c></row>" +
-                    "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Системное сохранение XLSX работает</t></is></c></row>" +
-                    "</sheetData></worksheet>");
+    @Override
+    protected void onDestroy() {
+        if (webView != null) {
+            webView.removeJavascriptInterface("NativeStore");
+            webView.destroy();
         }
-        return bytes.toByteArray();
-    }
-
-    private void put(ZipOutputStream zip, String name, String text) throws IOException {
-        ZipEntry entry = new ZipEntry(name);
-        zip.putNextEntry(entry);
-        zip.write(text.getBytes(StandardCharsets.UTF_8));
-        zip.closeEntry();
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
+        super.onDestroy();
     }
 }
