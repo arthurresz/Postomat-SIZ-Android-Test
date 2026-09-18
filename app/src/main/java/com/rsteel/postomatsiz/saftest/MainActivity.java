@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.21-standard-classic-ui-explicit-root-exit';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.22-standard-classic-ui-deterministic-role-back';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -1072,6 +1072,100 @@ showBetaHome=function(push=true){
   // На главном экране выбора раздела кнопки "Назад" быть не должно.
   const topBack=byId('globalBack');
   if(topBack)topBack.remove();
+};
+
+
+// ===== v3.22 deterministic navigation by role =====
+function roleRootState(){
+  const role=(window.uiState&&uiState.role)||session.role||null;
+  const screen=(window.uiState&&uiState.screen)||null;
+  const tab=(window.uiState&&uiState.tab)||null;
+
+  if(screen==='home')return {role:null,root:false,home:true};
+  if(screen==='login')return {role,root:false,login:true};
+
+  if(role==='WAREHOUSE'||screen==='warehouse'){
+    const normalized=(tab==='tasks'||tab==='route'||tab==null)?'replenish':(tab==='done'?'history':tab);
+    const routeOpen=!!(session.routeCells&&session.routeCells.length&&session.routeIndex>=0);
+    return {role:'WAREHOUSE',root:normalized==='replenish'&&!routeOpen};
+  }
+  if(role==='ADMIN'||screen==='admin'){
+    return {role:'ADMIN',root:tab==='overview'||tab==null};
+  }
+  if(role==='OPERATOR'||screen==='operator'){
+    return {role:'OPERATOR',root:true};
+  }
+  return {role,root:false};
+}
+
+function returnToRoleRoot(){
+  const s=roleRootState();
+
+  if(s.login){
+    showBetaHome(false);
+    return;
+  }
+
+  if(s.role==='WAREHOUSE'){
+    session.routeCells=[];session.routeIndex=-1;session.routeActual={};
+    session.revisionCellId=null;session.revisionActual={};
+    session.flow=null;
+    showWarehouse('replenish',false);
+    return;
+  }
+
+  if(s.role==='ADMIN'){
+    showAdmin('overview',false);
+    return;
+  }
+
+  if(s.role==='OPERATOR'){
+    showOperator(false);
+    return;
+  }
+
+  showBetaHome(false);
+}
+
+function closeTopDialogIfAny(){
+  const close=document.querySelector(
+    '.modal.show [data-close],.modal.show .close,'+
+    '.modalOverlay.show [data-close],.dialog.show [data-close]'
+  );
+  if(close){close.click();return true}
+  return false;
+}
+
+// "Назад" никогда не решает сам, выходить или нет.
+// Он только возвращает в корень текущей роли.
+setGlobalButtonBack=function(){
+  const b=byId('globalBack');
+  if(!b)return;
+  b.style.display='';
+  b.textContent='← НАЗАД';
+  b.title='Назад';
+  b.onclick=()=>returnToRoleRoot();
+};
+
+// Финальная единая логика аппаратной/системной кнопки Back.
+window.appBack=function(){
+  try{
+    if(closeTopDialogIfAny())return;
+
+    const s=roleRootState();
+    if(s.home)return;
+    if(s.login){showBetaHome(false);return}
+
+    if(s.root){
+      confirmSectionExit();
+      return;
+    }
+
+    returnToRoleRoot();
+  }catch(e){
+    console.error('appBack v3.22',e);
+    try{showBetaHome(false)}catch(_){}
+  }
 };
 
 """;
