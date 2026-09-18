@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.16-standard-classic-ui-global-back-exit';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.18-standard-classic-ui-home-vertical';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -650,27 +650,110 @@ wireAdmin=function(tab){
   }
 };
 
-// ===== v3.8 role entry screen: admin + warehouse =====
+// ===== v3.18 main role cards =====
 showBetaHome=function(push=true){
   if(push)setUi({screen:'home'},true);else uiState={screen:'home',role:null,tab:null};
   session.role=null;session.user=null;session.sid='DEMO-SID';session.connected=true;session.mode='DEMO';
-  render(`<div class="betaHome">
-    <div class="betaHero">
-      <div class="betaTag">● БЕТА • РЕАЛЬНЫЙ ПОСТОМАТ ОТКЛЮЧЁН</div>
-      <h1>Постомат СИЗ</h1>
-      <p>Выберите рабочий контур. В тестовой версии команды на реальный контроллер не отправляются.</p>
-      <div style="height:20px"></div>
-      <div style="display:grid;gap:10px">
-        <button id="betaWarehouse" class="btn" style="background:#fff;color:#0f4f99;width:100%;height:56px;font-size:16px">ВХОД ДЛЯ СКЛАДА</button>
-        <button id="betaAdmin" class="btn" style="background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.55);color:#fff;width:100%;height:52px;font-size:15px">АДМИНИСТРИРОВАНИЕ</button>
+
+  const appSvg=`<svg viewBox="0 0 240 170" xmlns="http://www.w3.org/2000/svg" fill="none">
+    <rect x="59" y="34" width="122" height="118" rx="19" fill="#fff"/>
+    <rect x="76" y="52" width="30" height="24" rx="6" fill="#dce8f7"/>
+    <rect x="112" y="52" width="30" height="24" rx="6" fill="#dce8f7"/>
+    <rect x="148" y="52" width="16" height="24" rx="6" fill="#dce8f7"/>
+    <rect x="76" y="83" width="30" height="24" rx="6" fill="#dce8f7"/>
+    <rect x="112" y="83" width="30" height="24" rx="6" fill="#dce8f7"/>
+    <rect x="148" y="83" width="16" height="24" rx="6" fill="#dce8f7"/>
+    <rect x="76" y="115" width="88" height="21" rx="7" fill="#d7e6f8"/>
+    <rect x="101" y="6" width="38" height="38" rx="12" fill="#ffd45c"/>
+    <path d="M120 13l11 5v8c0 7-5 12-11 15-6-3-11-8-11-15v-8l11-5z" fill="#0f4f99"/>
+    <path d="M115 25l4 4 7-8" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+
+  const opSvg=`<svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+    <circle cx="44" cy="26" r="14" fill="#ffd45c"/>
+    <path d="M31 27c2-11 8-17 13-17 6 0 12 6 14 17" stroke="#8f5b00" stroke-width="6" stroke-linecap="round"/>
+    <rect x="26" y="45" width="38" height="34" rx="12" fill="#fff" stroke="#8f5b00" stroke-width="4"/>
+    <rect x="73" y="38" width="28" height="43" rx="8" fill="#9adf9a"/>
+    <rect x="79" y="45" width="16" height="12" rx="4" fill="#fff"/>
+    <path d="M68 62h10" stroke="#8f5b00" stroke-width="5" stroke-linecap="round"/>
+  </svg>`;
+
+  const whSvg=`<svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+    <rect x="14" y="16" width="92" height="11" rx="5.5" fill="#136f63" opacity=".2"/>
+    <rect x="20" y="27" width="14" height="58" rx="5" fill="#136f63" opacity=".2"/>
+    <rect x="86" y="27" width="14" height="58" rx="5" fill="#136f63" opacity=".2"/>
+    <rect x="26" y="34" width="25" height="20" rx="6" fill="#ffc857"/>
+    <rect x="56" y="34" width="25" height="20" rx="6" fill="#7cc8ff"/>
+    <rect x="41" y="61" width="25" height="20" rx="6" fill="#9adf9a"/>
+    <path d="M79 67h22M90 56v22" stroke="#136f63" stroke-width="8" stroke-linecap="round"/>
+  </svg>`;
+
+  const adminSvg=`<svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+    <rect x="16" y="15" width="78" height="51" rx="12" fill="#7cc8ff" opacity=".32"/>
+    <rect x="24" y="23" width="62" height="35" rx="8" fill="#fff" stroke="#0f4f99" stroke-width="4"/>
+    <path d="M42 76h28M56 58v18" stroke="#0f4f99" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="91" cy="72" r="14" fill="#ffd45c"/>
+    <path d="M91 62v20M81 72h20M84 65l14 14M98 65L84 79" stroke="#0f4f99" stroke-width="4" stroke-linecap="round"/>
+  </svg>`;
+
+  render(`<div class="betaHome homeScreenV318">
+    <style>
+      .homeScreenV318{display:flex;flex-direction:column;gap:12px}
+      .homeHeroV318{background:linear-gradient(135deg,#0f4f99 0%,#1976d2 100%);color:#fff;border-radius:22px;padding:15px 18px;box-shadow:0 14px 32px rgba(15,79,153,.2)}
+      .homeHeroGridV318{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:14px;align-items:center}
+      .homeHeroV318 h1{margin:5px 0 5px;font-size:29px;line-height:1.05}
+      .homeHeroV318 p{margin:0;color:rgba(255,255,255,.9);font-size:13px;line-height:1.35}
+      .homeHeroArtV318{width:180px;justify-self:end}
+      .homeHeroNoteV318{margin-top:7px;font-size:11px;color:rgba(255,255,255,.83)}
+      .homeCardsV318{display:grid;grid-template-columns:1fr;gap:10px}
+      .homeRoleCardV318{appearance:none;width:100%;border:1px solid #dbe5f1;background:#fff;border-radius:20px;padding:11px 14px;cursor:pointer;text-align:left;display:grid;grid-template-columns:118px minmax(0,1fr) 126px;gap:16px;align-items:center;min-height:112px;box-shadow:0 8px 20px rgba(15,79,153,.07);color:inherit;font:inherit}
+      .homeRoleCardV318:active{transform:scale(.997)}
+      .homeRoleIconV318{height:88px;border-radius:16px;background:linear-gradient(180deg,#f6f9fe,#edf4fc);display:flex;align-items:center;justify-content:center}
+      .homeRoleIconV318 svg{width:100px;height:82px}
+      .homeRoleTitleV318{font-size:22px;font-weight:800;color:#172033;line-height:1.15}
+      .homeRoleOpenV318{height:46px;border-radius:14px;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px;letter-spacing:.3px}
+      .homeOperatorV318 .homeRoleOpenV318{background:#8f5b00}
+      .homeWarehouseV318 .homeRoleOpenV318{background:#136f63}
+      .homeAdminV318 .homeRoleOpenV318{background:#0f4f99}
+      @media(max-width:720px){
+        .homeHeroGridV318{grid-template-columns:1fr 135px}.homeHeroArtV318{width:135px}
+        .homeRoleCardV318{grid-template-columns:88px minmax(0,1fr);gap:12px}.homeRoleIconV318{height:76px}.homeRoleIconV318 svg{width:82px;height:70px}.homeRoleTitleV318{font-size:18px}.homeRoleOpenV318{grid-column:1/-1;height:40px}
+      }
+    </style>
+    <div class="homeHeroV318">
+      <div class="betaTag">● ДЕМО РЕЖИМ • ПОСТОМАТ</div>
+      <div class="homeHeroGridV318">
+        <div>
+          <h1>ПОСТАМАТ СИЗ</h1>
+          <p>Выберите необходимый раздел.</p>
+          <div class="homeHeroNoteV318">Все изменения выполняются локально на планшете. Реальный постомат не задействуется.</div>
+        </div>
+        <div class="homeHeroArtV318">${appSvg}</div>
       </div>
     </div>
-    <div class="betaSteps">
-      <div class="betaStep"><b>Склад</b><span>Восполнение ячеек, ревизия и история выполненных операций.</span></div>
-      <div class="betaStep"><b>Администратор</b><span>Сотрудники, ячейки, СИЗ, назначения, остатки, журналы, отчёты и настройки.</span></div>
-      <div class="betaStep"><b>Оператор</b><span>Контур выдачи СИЗ подключим отдельным этапом после проверки склада.</span></div>
+    <div class="homeCardsV318">
+      <button id="betaOperator" class="homeRoleCardV318 homeOperatorV318">
+        <div class="homeRoleIconV318">${opSvg}</div>
+        <div class="homeRoleTitleV318">ПОЛУЧЕНИЕ СИЗ</div>
+        <div class="homeRoleOpenV318">ОТКРЫТЬ</div>
+      </button>
+      <button id="betaWarehouse" class="homeRoleCardV318 homeWarehouseV318">
+        <div class="homeRoleIconV318">${whSvg}</div>
+        <div class="homeRoleTitleV318">ВХОД ДЛЯ СКЛАДА</div>
+        <div class="homeRoleOpenV318">ОТКРЫТЬ</div>
+      </button>
+      <button id="betaAdmin" class="homeRoleCardV318 homeAdminV318">
+        <div class="homeRoleIconV318">${adminSvg}</div>
+        <div class="homeRoleTitleV318">АДМИНИСТРИРОВАНИЕ</div>
+        <div class="homeRoleOpenV318">ОТКРЫТЬ</div>
+      </button>
     </div>
   </div>`);
+
+  const back=byId('globalBack');
+  if(back)back.style.display='none';
+
+  byId('betaOperator').onclick=()=>showUserLogin('OPERATOR');
   byId('betaWarehouse').onclick=()=>showUserLogin('WAREHOUSE');
   byId('betaAdmin').onclick=()=>showUserLogin('ADMIN');
 };
@@ -828,6 +911,11 @@ render=function(html){
   __renderV316(html);
   const b=byId('globalBack');
   if(!b)return;
+  if(window.uiState&&uiState.screen==='home'){
+    b.style.display='none';
+    return;
+  }
+  b.style.display='';
   if(currentSectionRoot()){
     b.textContent='ВЫХОД';
     b.title='Выйти из раздела';
