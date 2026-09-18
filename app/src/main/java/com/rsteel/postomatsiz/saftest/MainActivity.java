@@ -103,7 +103,7 @@ window.__pendingStorageAction=null;
 
 function sendReportByEmail(type,key,email){
   email=String(email||'').trim();
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('Введите корректный Email','error');return false}
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){toast('Введите корректный Email','error');return false}
   if(!nativeStorageAvailable()){
     window.__pendingStorageAction={kind:'email',type,key,email};
     chooseNativeStorage();
