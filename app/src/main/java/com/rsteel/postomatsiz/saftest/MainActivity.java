@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.8-standard-classic-ui-warehouse-login';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.9-standard-classic-ui-warehouse-email';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -344,6 +344,7 @@ try{enableNativeMobileKeyboard(document)}catch(e){console.error('native keyboard
 function ensureWarehouseData(){
   if(!Array.isArray(db.revisionLog))db.revisionLog=[];
   if(!db.settings.warehouseReportDays)db.settings.warehouseReportDays=[3,5];
+  if(typeof db.settings.warehouseReportEmail!=='string')db.settings.warehouseReportEmail='';
   if(!session.whHistoryType)session.whHistoryType='replenish';
   if(!session.revisionActual)session.revisionActual={};
 }
@@ -491,13 +492,11 @@ function whRevisionBody(){
   const cells=db.cells.filter(c=>c.active).sort((a,b)=>Number(a.id)-Number(b.id));
   if(session.revisionCellId!=null)return whRevisionWorkBody();
   const options=cells.map(c=>{const o=ownerOfCell(c.id);return `<option value="${c.id}">${esc(c.name)} — ${esc(o?.name||'без сотрудника')}</option>`}).join('');
-  const recent=(db.revisionLog||[]).slice(0,5).map(r=>`<div class="archiveItem"><div class="row"><b>${fmtDate(r.ts)}</b><span class="badge">${esc(r.result)}</span></div><div class="meta">${esc(cell(r.cellId)?.name||('Ячейка №'+r.cellId))} • ${esc(r.ppeName)} • по учёту ${r.expected} / факт ${r.actual}</div></div>`).join('');
-  return `<div class="contentHead"><div><div class="h1">Ревизия</div><p>Ревизия выполняется складом в любое необходимое время. Планов и сроков нет.</p></div></div>
+  return `<div class="contentHead"><div><div class="h1">Ревизия</div><p>Ревизия выполняется складом в любое необходимое время.</p></div></div>
   <div class="card" style="max-width:700px">
     <div class="field"><label>Ячейка</label><select id="revisionCellSelect" class="select">${options}</select></div>
     <button id="startRevision" class="btn primary block" ${cells.length?'':'disabled'}>ПЕРЕЙТИ К РЕВИЗИИ</button>
-  </div>
-  <div class="sectionLabel">Последние ревизии</div>${recent||'<div class="empty">Ревизии ещё не проводились</div>'}`;
+  </div>`;
 }
 
 function whRevisionWorkBody(){
@@ -601,6 +600,43 @@ function showWarehouse(tab='replenish',push=true){
     if(byId('histRevision'))byId('histRevision').onclick=()=>{session.whHistoryType='revision';showWarehouse('history')};
   }
 }
+
+// ===== v3.9 warehouse report email setting =====
+const __adminSettingsV39=adminSettings;
+adminSettings=function(){
+  ensureWarehouseData();
+  const base=__adminSettingsV39();
+  return base+`
+    <div class="sectionLabel">Отчёт склада по восполнению</div>
+    <div class="card" style="max-width:760px">
+      <div class="h2" style="font-size:18px">Постоянный Email получателя</div>
+      <div class="sub" style="margin-bottom:12px">Этот адрес будет использоваться для автоматической отправки отчёта по восполнению по средам и пятницам.</div>
+      <div class="field">
+        <label>Email склада / получателя отчёта</label>
+        <input id="warehouseReportEmail" class="input" data-vk="latin" inputmode="email" autocomplete="off" autocapitalize="none" value="${esc(db.settings.warehouseReportEmail||'')}">
+      </div>
+      <button id="saveWarehouseReportEmail" class="btn primary">СОХРАНИТЬ EMAIL</button>
+    </div>`;
+};
+
+const __wireAdminV39=wireAdmin;
+wireAdmin=function(tab){
+  __wireAdminV39(tab);
+  if(tab==='settings'){
+    const b=byId('saveWarehouseReportEmail');
+    if(b)b.onclick=()=>{
+      const email=String(byId('warehouseReportEmail')?.value||'').trim();
+      if(email&&!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+        toast('Введите корректный Email','error');return;
+      }
+      db.settings.warehouseReportEmail=email;
+      saveDb();
+      toast(email?'Email для отчёта склада сохранён':'Email для отчёта склада очищен','ok');
+      showAdmin('settings');
+    };
+    enableNativeMobileKeyboard(document);
+  }
+};
 
 // ===== v3.8 role entry screen: admin + warehouse =====
 showBetaHome=function(push=true){
