@@ -87,7 +87,12 @@ public class MainActivity extends Activity {
             page = page.replace("title='Сотрудники без назначеных СИЗ';goTab='employees';", "title='Сотрудники без назначенных СИЗ';goTab='employees';");
             page = page.replace("title='Свободные активные ячейки';goTab='cells';", "title='Свободные ячейки';goTab='cells';");
             page = page.replace("title='Некорректные связи';goTab='assignments';", "title='Ошибки';goTab='assignments';");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.5-standard-classic-ui-native-keyboard';");
+            page = page.replace(">+ Сотрудник<", ">Добавить сотрудника<");
+            page = page.replace(">+ Ячейка<", ">Добавить ячейку<");
+            page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
+            page = page.replace(">+ Назначение<", ">Добавить назначение<");
+            page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.6-standard-classic-ui-labels';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -231,7 +236,7 @@ function compactEmployeeAssignments(e,forceOpen){
     <div class="empAsBody">
       <div class="empAsToolbar">
         <div class="meta">${c?'Назначения для '+esc(c.name):'Сначала назначьте сотруднику ячейку'}</div>
-        <button class="btn small primary" data-add-as-emp="${e.id}">+ Назначить СИЗ</button>
+        <button class="btn small primary" data-add-as-emp="${e.id}">Добавить СИЗ</button>
       </div>
       ${aa.length?aa.map(compactAssignmentCard).join(''):'<div class="empty" style="padding:18px">СИЗ сотруднику ещё не назначены</div>'}
     </div>
@@ -247,7 +252,7 @@ adminAssignments=function(){
   const shown=selected?employees.filter(e=>e.id===selected):employees;
   const totalAs=db.assignments.filter(a=>a.active).length;
   const content=shown.map(e=>compactEmployeeAssignments(e,Boolean(selected))).join('');
-  return adminHeader('Назначения СИЗ','Компактный просмотр по сотрудникам. Один и тот же вид СИЗ можно назначать разным сотрудникам.',`<button id="addAs" class="btn primary">+ Назначение</button>`)+
+  return adminHeader('Назначения СИЗ','Компактный просмотр по сотрудникам. Один и тот же вид СИЗ можно назначать разным сотрудникам.',`<button id="addAs" class="btn primary">Добавить назначение</button>`)+
   `<style>
     .asFilterCard{background:#fff;border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:14px}
     .asFilterMeta{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:9px;font-size:12px;color:var(--muted)}
