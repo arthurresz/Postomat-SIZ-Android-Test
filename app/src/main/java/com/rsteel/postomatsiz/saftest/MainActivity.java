@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.13-standard-classic-ui-back-root';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.14-standard-classic-ui-warehouse-cards-exit';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -734,6 +734,88 @@ window.appBack=function(){
     console.error('appBack v3.13',e);
     try{showBetaHome(false)}catch(_){}
   }
+};
+
+// ===== v3.14 compact warehouse cards + dynamic Back/Exit =====
+whQueueBody=function(){
+  const groups=whQueueGroups();
+  const totalPositions=groups.reduce((s,g)=>s+g.tasks.length,0);
+  const totalQty=groups.reduce((s,g)=>s+g.tasks.reduce((x,t)=>x+Math.max(0,t.a.target-t.a.stock),0),0);
+  const cards=groups.map(g=>{
+    const c=cell(g.cellId),o=ownerOfCell(g.cellId);
+    const critical=g.tasks.some(t=>t.a.stock===0);
+    const qty=g.tasks.reduce((s,t)=>s+Math.max(0,t.a.target-t.a.stock),0);
+    return `<button class="whCard" data-wh-cell="${g.cellId}">
+      <div class="whCardHead">
+        <div class="whCardPerson"><b>${esc(o?.name||'Сотрудник не назначен')}</b><span>${esc(c?.name||('Ячейка №'+g.cellId))}</span></div>
+        <span class="badge ${critical?'red':'orange'}">${critical?'КРИТИЧНО':'ПОПОЛНИТЬ'}</span>
+      </div>
+      <div class="whCardStats">
+        <div class="whCardMetric"><b>${g.tasks.length}</b><span>позиций</span></div>
+        <div class="whCardMetric"><b>+${qty}</b><span>единиц</span></div>
+        <span class="whCardArrow">›</span>
+      </div>
+    </button>`;
+  }).join('');
+  return `<style>
+    .whStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .whStat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}.whStat b{font-size:24px;display:block}.whStat span{font-size:12px;color:var(--muted)}
+    .whCards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .whCard{width:100%;min-height:118px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px;text-align:left;color:inherit;font:inherit;cursor:pointer;display:block}
+    .whCard:active{transform:scale(.995)}
+    .whCardHead{display:flex;align-items:flex-start;gap:8px}.whCardPerson{min-width:0;flex:1}.whCardPerson b{display:block;font-size:16px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.whCardPerson span{display:block;color:var(--muted);font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .whCardHead .badge{margin-left:0;flex:0 0 auto;font-size:10px;padding:5px 7px}
+    .whCardStats{display:grid;grid-template-columns:1fr 1fr 20px;gap:8px;align-items:center;margin-top:13px}.whCardMetric{background:#f6f8fb;border-radius:9px;padding:8px 9px}.whCardMetric b{display:block;font-size:17px}.whCardMetric span{display:block;color:var(--muted);font-size:10px;margin-top:2px}.whCardArrow{font-size:25px;color:var(--muted);text-align:right}
+    .whInfo{margin-bottom:14px}
+    @media(max-width:520px){.whCards{grid-template-columns:1fr}.whStats{grid-template-columns:1fr}.whStat{padding:10px 12px}.whStat b{font-size:20px}}
+  </style>
+  <div class="contentHead"><div><div class="h1">Восполнение</div><p>Выберите пользователя / ячейку. После выбора откроется список СИЗ и количество для пополнения.</p></div><div class="right"><button class="btn outline" id="whRefresh">Обновить</button></div></div>
+  <div class="note whInfo"><b>Отчёт склада:</b> формируется из этой очереди. Расписание — <b>среда и пятница</b>.</div>
+  <div class="whStats">
+    <div class="whStat"><b>${groups.length}</b><span>Ячеек к восполнению</span></div>
+    <div class="whStat"><b>${totalPositions}</b><span>Позиций СИЗ</span></div>
+    <div class="whStat"><b>${totalQty}</b><span>Единиц добавить</span></div>
+  </div>
+  <div class="whCards">${cards||'<div class="empty">Сейчас восполнение не требуется</div>'}</div>`;
+};
+
+function warehouseAtRoot(active){
+  return active==='replenish'&&!(session.routeCells&&session.routeCells.length&&session.routeIndex>=0);
+}
+
+const __workspaceV314=workspace;
+workspace=function(role,active,body){
+  const html=__workspaceV314(role,active,body);
+  if(role!=='WAREHOUSE')return html;
+  const button=warehouseAtRoot(active)
+    ? '<button class="navbtn bottom" data-v314-exit="1">Выход</button>'
+    : '<button class="navbtn bottom" data-v314-back="1">← Назад</button>';
+  return html.replace('</aside>',button+'</aside>');
+};
+
+function confirmWarehouseExit(){
+  confirmModal('Выйти из раздела?','Завершить работу склада и вернуться на главный экран?','ВЫЙТИ',()=>{
+    session.routeCells=[];session.routeIndex=-1;session.routeActual={};session.revisionCellId=null;session.revisionActual={};session.flow=null;
+    session.role=null;session.user=null;resetUiHome();showBetaHome(false);
+  });
+}
+
+const __wireNavV314=wireNav;
+wireNav=function(role){
+  __wireNavV314(role);
+  if(role!=='WAREHOUSE')return;
+  document.querySelectorAll('[data-v314-back]').forEach(b=>b.onclick=()=>appBack());
+  document.querySelectorAll('[data-v314-exit]').forEach(b=>b.onclick=()=>confirmWarehouseExit());
+};
+
+const __appBackV314=window.appBack;
+window.appBack=function(){
+  const role=(window.uiState&&uiState.role)||session.role||null;
+  const tab=(window.uiState&&uiState.tab)||null;
+  if(role==='WAREHOUSE'&&tab==='replenish'&&warehouseAtRoot('replenish')){
+    confirmWarehouseExit();return;
+  }
+  __appBackV314();
 };
 
 """;
