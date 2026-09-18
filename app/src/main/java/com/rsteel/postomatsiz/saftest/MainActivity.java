@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.18-standard-classic-ui-home-vertical';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.19-standard-classic-ui-root-exit-fix';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -964,6 +964,80 @@ window.appBack=function(){
     console.error('appBack v3.16',e);
     try{__appBackV316()}catch(_){}
   }
+};
+
+
+// ===== v3.19 reliable root Exit button =====
+function syncGlobalSectionButton(){
+  const b=byId('globalBack');
+  if(!b)return;
+
+  const screen=(window.uiState&&uiState.screen)||null;
+  const role=(window.uiState&&uiState.role)||session.role||null;
+  const tab=(window.uiState&&uiState.tab)||null;
+
+  if(screen==='home'){
+    b.style.display='none';
+    b.onclick=null;
+    return;
+  }
+
+  b.style.display='';
+
+  let atRoot=false;
+  if(role==='WAREHOUSE'||screen==='warehouse'){
+    atRoot=(tab==='replenish')&&warehouseAtRoot('replenish');
+  }else if(role==='ADMIN'||screen==='admin'){
+    atRoot=(tab==='overview');
+  }else if(role==='OPERATOR'||screen==='operator'){
+    atRoot=true;
+  }
+
+  if(atRoot){
+    b.textContent='ВЫХОД';
+    b.title='Выйти из раздела';
+    b.onclick=()=>confirmSectionExit();
+  }else{
+    b.textContent='← НАЗАД';
+    b.title='Назад';
+    b.onclick=()=>window.appBack();
+  }
+}
+
+const __showWarehouseV319=showWarehouse;
+showWarehouse=function(tab='replenish',push=true){
+  __showWarehouseV319(tab,push);
+  syncGlobalSectionButton();
+};
+
+const __showAdminV319=showAdmin;
+showAdmin=function(tab='overview',push=true){
+  __showAdminV319(tab,push);
+  syncGlobalSectionButton();
+};
+
+const __showOperatorV319=showOperator;
+showOperator=function(push=true){
+  __showOperatorV319(push);
+  syncGlobalSectionButton();
+};
+
+const __showUserLoginV319=showUserLogin;
+showUserLogin=function(role,push=true){
+  __showUserLoginV319(role,push);
+  const b=byId('globalBack');
+  if(b){
+    b.style.display='';
+    b.textContent='← НАЗАД';
+    b.title='Назад';
+    b.onclick=()=>window.appBack();
+  }
+};
+
+const __showBetaHomeV319=showBetaHome;
+showBetaHome=function(push=true){
+  __showBetaHomeV319(push);
+  syncGlobalSectionButton();
 };
 
 """;
