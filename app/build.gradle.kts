@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 6
-        versionName = "3.3-standard-classic-ui-email-backup"
+        versionCode = 7
+        versionName = "3.4-standard-classic-ui-compact-assignments"
     }
 
     buildTypes {
