@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.10-standard-classic-ui-admin-label';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.11-standard-classic-ui-home-refresh';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -662,6 +662,16 @@ showBetaHome=function(push=true){
   byId('betaWarehouse').onclick=()=>showUserLogin('WAREHOUSE');
   byId('betaAdmin').onclick=()=>showUserLogin('ADMIN');
 };
+
+// Original classic UI renders the home screen before this late patch is injected.
+// Re-render it once after the override is installed so the new role buttons are actually visible.
+setTimeout(()=>{
+  try{
+    if(byId('betaAdmin') || byId('betaWarehouse') || (window.uiState&&uiState.screen==='home')){
+      showBetaHome(false);
+    }
+  }catch(e){console.error('refresh patched home',e)}
+},0);
 
 """;
     }
