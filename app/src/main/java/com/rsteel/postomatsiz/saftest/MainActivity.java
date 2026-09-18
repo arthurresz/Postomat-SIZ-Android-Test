@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.11-standard-classic-ui-home-refresh';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.12-standard-classic-ui-warehouse-compact';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -376,38 +376,48 @@ function whQueueBody(){
   const groups=whQueueGroups();
   const totalPositions=groups.reduce((s,g)=>s+g.tasks.length,0);
   const totalQty=groups.reduce((s,g)=>s+g.tasks.reduce((x,t)=>x+Math.max(0,t.a.target-t.a.stock),0),0);
-  const cards=groups.map(g=>{
+  const rows=groups.map(g=>{
     const c=cell(g.cellId),o=ownerOfCell(g.cellId);
     const critical=g.tasks.some(t=>t.a.stock===0);
     const qty=g.tasks.reduce((s,t)=>s+Math.max(0,t.a.target-t.a.stock),0);
-    const items=g.tasks.map(t=>`<div class="whMiniLine"><span>${esc(ppe(t.ppeId)?.name||t.ppeId)}</span><b>+${Math.max(0,t.a.target-t.a.stock)}</b></div>`).join('');
-    return `<div class="whCellCard">
-      <div class="row"><div><div class="h2" style="font-size:18px">${esc(c?.name||('Ячейка №'+g.cellId))}</div><div class="sub">${esc(o?.name||'Сотрудник не назначен')}</div></div><span class="badge ${critical?'red':'orange'}">${critical?'КРИТИЧНО':'ПОПОЛНИТЬ'}</span></div>
-      <div class="whCellMeta"><span>${g.tasks.length} поз.</span><span>Добавить всего: <b>${qty}</b></span></div>
-      <div class="whMiniList">${items}</div>
-      <button class="btn primary block" data-wh-cell="${g.cellId}">ПЕРЕЙТИ К ВОСПОЛНЕНИЮ</button>
-    </div>`;
+    return `<button class="whQueueRow" data-wh-cell="${g.cellId}">
+      <div class="whQueueMain">
+        <b>${esc(c?.name||('Ячейка №'+g.cellId))}</b>
+        <span>${esc(o?.name||'Сотрудник не назначен')}</span>
+      </div>
+      <div class="whQueueMetric"><b>${g.tasks.length}</b><span>позиций</span></div>
+      <div class="whQueueMetric"><b>+${qty}</b><span>единиц</span></div>
+      <span class="badge ${critical?'red':'orange'}">${critical?'КРИТИЧНО':'ПОПОЛНИТЬ'}</span>
+      <span class="whQueueArrow">›</span>
+    </button>`;
   }).join('');
   return `<style>
     .whStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .whStat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}.whStat b{font-size:24px;display:block}.whStat span{font-size:12px;color:var(--muted)}
-    .whCells{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
-    .whCellCard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px}
-    .whCellMeta{display:flex;justify-content:space-between;gap:10px;margin:12px 0;font-size:12px;color:var(--muted)}
-    .whMiniList{border-top:1px solid var(--line);padding-top:9px;margin-bottom:12px}
-    .whMiniLine{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13px}
-    .whMiniLine b{color:#0f766e}
+    .whQueueList{display:grid;gap:8px}
+    .whQueueRow{width:100%;display:grid;grid-template-columns:minmax(180px,1fr) 90px 90px auto 24px;gap:12px;align-items:center;text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;color:inherit;font:inherit;cursor:pointer}
+    .whQueueRow:active{transform:scale(.995)}
+    .whQueueMain{min-width:0}.whQueueMain b{display:block;font-size:16px}.whQueueMain span{display:block;color:var(--muted);font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .whQueueMetric{text-align:center}.whQueueMetric b{display:block;font-size:16px}.whQueueMetric span{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+    .whQueueArrow{font-size:26px;color:var(--muted);text-align:right}
     .whInfo{margin-bottom:14px}
-    @media(max-width:620px){.whStats{grid-template-columns:1fr}.whCells{grid-template-columns:1fr}}
+    @media(max-width:700px){
+      .whStats{grid-template-columns:repeat(3,1fr)}
+      .whQueueRow{grid-template-columns:1fr auto auto;gap:8px}
+      .whQueueMetric{min-width:58px}
+      .whQueueRow .badge{grid-column:1/3;justify-self:start}
+      .whQueueArrow{grid-column:3;grid-row:2}
+    }
+    @media(max-width:500px){.whStats{grid-template-columns:1fr}.whStat{padding:10px 12px}.whStat b{font-size:20px}}
   </style>
-  <div class="contentHead"><div><div class="h1">Восполнение</div><p>Очередь формируется автоматически, когда остаток СИЗ становится меньше или равен Min.</p></div><div class="right"><button class="btn outline" id="whRefresh">Обновить</button></div></div>
-  <div class="note whInfo"><b>Отчёт склада:</b> формируется из этой очереди. Расписание — <b>среда и пятница</b>. Автоматическую отправку Email включим после подключения почтового канала.</div>
+  <div class="contentHead"><div><div class="h1">Восполнение</div><p>Сначала выберите ячейку. После выбора откроется список СИЗ и количество для пополнения.</p></div><div class="right"><button class="btn outline" id="whRefresh">Обновить</button></div></div>
+  <div class="note whInfo"><b>Отчёт склада:</b> формируется из этой очереди. Расписание — <b>среда и пятница</b>.</div>
   <div class="whStats">
     <div class="whStat"><b>${groups.length}</b><span>Ячеек к восполнению</span></div>
     <div class="whStat"><b>${totalPositions}</b><span>Позиций СИЗ</span></div>
     <div class="whStat"><b>${totalQty}</b><span>Единиц добавить</span></div>
   </div>
-  <div class="whCells">${cards||'<div class="empty">Сейчас восполнение не требуется</div>'}</div>`;
+  <div class="whQueueList">${rows||'<div class="empty">Сейчас восполнение не требуется</div>'}</div>`;
 }
 
 function startWhCell(cellId){
