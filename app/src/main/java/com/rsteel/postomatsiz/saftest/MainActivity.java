@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.9-standard-classic-ui-warehouse-email';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.10-standard-classic-ui-admin-label';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -650,7 +650,7 @@ showBetaHome=function(push=true){
       <div style="height:20px"></div>
       <div style="display:grid;gap:10px">
         <button id="betaWarehouse" class="btn" style="background:#fff;color:#0f4f99;width:100%;height:56px;font-size:16px">ВХОД ДЛЯ СКЛАДА</button>
-        <button id="betaAdmin" class="btn" style="background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.55);color:#fff;width:100%;height:52px;font-size:15px">ВХОД В АДМИНКУ</button>
+        <button id="betaAdmin" class="btn" style="background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.55);color:#fff;width:100%;height:52px;font-size:15px">АДМИНИСТРИРОВАНИЕ</button>
       </div>
     </div>
     <div class="betaSteps">
