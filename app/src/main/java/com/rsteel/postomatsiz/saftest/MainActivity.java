@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.20-standard-classic-ui-clean-home-login-nav';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.21-standard-classic-ui-explicit-root-exit';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -872,10 +872,10 @@ function currentSectionRoot(){
   const tab=(window.uiState&&uiState.tab)||null;
 
   if(role==='WAREHOUSE'||screen==='warehouse'){
-    return tab==='replenish'&&warehouseAtRoot('replenish');
+    return (tab==='replenish'||tab==='tasks'||tab==null)&&warehouseAtRoot('replenish');
   }
   if(role==='ADMIN'||screen==='admin'){
-    return tab==='overview';
+    return tab==='overview'||tab==null;
   }
   if(role==='OPERATOR'||screen==='operator'){
     return true;
@@ -1004,22 +1004,49 @@ function syncGlobalSectionButton(){
   }
 }
 
+function setGlobalButtonExit(){
+  const b=byId('globalBack');
+  if(!b)return;
+  b.style.display='';
+  b.textContent='ВЫХОД';
+  b.title='Выйти из раздела';
+  b.onclick=()=>confirmSectionExit();
+}
+
+function setGlobalButtonBack(){
+  const b=byId('globalBack');
+  if(!b)return;
+  b.style.display='';
+  b.textContent='← НАЗАД';
+  b.title='Назад';
+  b.onclick=()=>window.appBack();
+}
+
+function applyWarehouseNavMode(tab){
+  const normalized=(tab==='tasks'||tab==='route')?'replenish':(tab==='done'?'history':tab);
+  const atRoot=normalized==='replenish'&&!(session.routeCells&&session.routeCells.length&&session.routeIndex>=0);
+  if(atRoot)setGlobalButtonExit();else setGlobalButtonBack();
+}
+
 const __showWarehouseV319=showWarehouse;
 showWarehouse=function(tab='replenish',push=true){
   __showWarehouseV319(tab,push);
-  syncGlobalSectionButton();
+  applyWarehouseNavMode(tab);
+  setTimeout(()=>applyWarehouseNavMode(tab),0);
 };
 
 const __showAdminV319=showAdmin;
 showAdmin=function(tab='overview',push=true){
   __showAdminV319(tab,push);
-  syncGlobalSectionButton();
+  if(tab==='overview'||tab==null)setGlobalButtonExit();else setGlobalButtonBack();
+  setTimeout(()=>{if(tab==='overview'||tab==null)setGlobalButtonExit();else setGlobalButtonBack()},0);
 };
 
 const __showOperatorV319=showOperator;
 showOperator=function(push=true){
   __showOperatorV319(push);
-  syncGlobalSectionButton();
+  setGlobalButtonExit();
+  setTimeout(()=>setGlobalButtonExit(),0);
 };
 
 const __showUserLoginV319=showUserLogin;
