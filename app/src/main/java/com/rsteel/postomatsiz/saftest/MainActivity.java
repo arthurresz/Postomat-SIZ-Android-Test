@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.12-standard-classic-ui-warehouse-compact';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.13-standard-classic-ui-back-root';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -350,13 +350,15 @@ function ensureWarehouseData(){
 }
 
 const __workspaceV37=workspace;
+function stripExitButton(html){
+  return String(html||'').replace(/<button[^>]*data-nav=["']logout["'][^>]*>[\\s\\S]*?<\\/button>/gi,'');
+}
 workspace=function(role,active,body){
-  if(role!=='WAREHOUSE')return __workspaceV37(role,active,body);
+  if(role!=='WAREHOUSE')return stripExitButton(__workspaceV37(role,active,body));
   const nav=[['replenish','Восполнение'],['revision','Ревизия'],['history','История']];
   return `<div class="workspace"><aside class="sidebar">
     <div class="profile"><b>${esc(session.user?.name||'')}</b><span>Склад</span></div>
     ${nav.map(n=>`<button class="navbtn ${n[0]===active?'active':''}" data-nav="${n[0]}">${n[1]}</button>`).join('')}
-    <button class="navbtn bottom" data-nav="logout">← Выйти</button>
   </aside><main class="content">${body}</main></div>`;
 };
 
@@ -682,6 +684,57 @@ setTimeout(()=>{
     }
   }catch(e){console.error('refresh patched home',e)}
 },0);
+
+// ===== v3.13 deterministic Back: return to section root, not navigation history =====
+window.canAppBack=function(){return true};
+window.appBack=function(){
+  try{
+    if(document.querySelector('.modal.show,.modalOverlay.show,.dialog.show')){
+      const close=document.querySelector('.modal.show [data-close],.modal.show .close,.modalOverlay.show [data-close],.dialog.show [data-close]');
+      if(close){close.click();return}
+    }
+
+    const role=(window.uiState&&uiState.role)||session.role||null;
+    const tab=(window.uiState&&uiState.tab)||null;
+
+    if(role==='WAREHOUSE'){
+      if(tab==='replenish'&&(session.routeCells?.length||session.routeIndex>=0)){
+        session.routeCells=[];session.routeIndex=-1;session.routeActual={};session.flow=null;
+        showWarehouse('replenish',false);
+        return;
+      }
+      if(tab==='revision'&&session.revisionCellId!=null){
+        session.revisionCellId=null;session.revisionActual={};session.flow=null;
+        showWarehouse('revision',false);
+        return;
+      }
+      if(tab!=='replenish'){
+        session.routeCells=[];session.routeIndex=-1;session.routeActual={};session.revisionCellId=null;session.revisionActual={};session.flow=null;
+        showWarehouse('replenish',false);
+        return;
+      }
+      showBetaHome(false);
+      return;
+    }
+
+    if(role==='ADMIN'){
+      if(tab&&tab!=='overview'){showAdmin('overview',false);return}
+      showBetaHome(false);
+      return;
+    }
+
+    if(role==='OPERATOR'){
+      showBetaHome(false);
+      return;
+    }
+
+    if(window.uiState&&uiState.screen!=='home'){showBetaHome(false);return}
+    return;
+  }catch(e){
+    console.error('appBack v3.13',e);
+    try{showBetaHome(false)}catch(_){}
+  }
+};
 
 """;
     }
