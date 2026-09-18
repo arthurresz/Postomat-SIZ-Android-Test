@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.15-standard-classic-ui-single-back-exit';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.16-standard-classic-ui-global-back-exit';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -783,24 +783,52 @@ function warehouseAtRoot(active){
   return active==='replenish'&&!(session.routeCells&&session.routeCells.length&&session.routeIndex>=0);
 }
 
-function confirmWarehouseExit(){
-  confirmModal('Выйти из раздела?','Завершить работу склада и вернуться на главный экран?','ВЫЙТИ',()=>{
-    session.routeCells=[];session.routeIndex=-1;session.routeActual={};session.revisionCellId=null;session.revisionActual={};session.flow=null;
-    session.role=null;session.user=null;resetUiHome();showBetaHome(false);
+function currentSectionRoot(){
+  const role=(window.uiState&&uiState.role)||session.role||null;
+  const screen=(window.uiState&&uiState.screen)||null;
+  const tab=(window.uiState&&uiState.tab)||null;
+
+  if(role==='WAREHOUSE'||screen==='warehouse'){
+    return tab==='replenish'&&warehouseAtRoot('replenish');
+  }
+  if(role==='ADMIN'||screen==='admin'){
+    return tab==='overview';
+  }
+  if(role==='OPERATOR'||screen==='operator'){
+    return true;
+  }
+  return false;
+}
+
+function currentSectionName(){
+  const role=(window.uiState&&uiState.role)||session.role||null;
+  if(role==='WAREHOUSE')return 'Склад';
+  if(role==='ADMIN')return 'Администрирование';
+  if(role==='OPERATOR')return 'Оператор';
+  return 'раздел';
+}
+
+function confirmSectionExit(){
+  const section=currentSectionName();
+  confirmModal('Выйти из раздела?',`Завершить работу в разделе «${esc(section)}» и вернуться на главный экран?`,'ВЫЙТИ',()=>{
+    session.routeCells=[];session.routeIndex=-1;session.routeActual={};
+    session.revisionCellId=null;session.revisionActual={};
+    session.flow=null;
+    session.role=null;session.user=null;
+    resetUiHome();
+    showBetaHome(false);
   });
 }
 
-// Используем только штатную верхнюю кнопку globalBack.
-// На корневом экране склада она становится "ВЫХОД",
-// во всех вложенных экранах остается "← НАЗАД".
-const __renderV315=render;
+// Одна штатная кнопка globalBack во всем приложении:
+// на корне любого рабочего раздела = ВЫХОД,
+// на вложенных экранах = ← НАЗАД.
+const __renderV316=render;
 render=function(html){
-  __renderV315(html);
+  __renderV316(html);
   const b=byId('globalBack');
   if(!b)return;
-  const role=(window.uiState&&uiState.role)||session.role||null;
-  const tab=(window.uiState&&uiState.tab)||null;
-  if(role==='WAREHOUSE'&&tab==='replenish'&&warehouseAtRoot('replenish')){
+  if(currentSectionRoot()){
     b.textContent='ВЫХОД';
     b.title='Выйти из раздела';
   }else{
@@ -809,14 +837,45 @@ render=function(html){
   }
 };
 
-const __appBackV315=window.appBack;
+const __appBackV316=window.appBack;
 window.appBack=function(){
-  const role=(window.uiState&&uiState.role)||session.role||null;
-  const tab=(window.uiState&&uiState.tab)||null;
-  if(role==='WAREHOUSE'&&tab==='replenish'&&warehouseAtRoot('replenish')){
-    confirmWarehouseExit();return;
+  try{
+    const mr=byId('modalRoot');
+    if(mr&&mr.classList.contains('show')){
+      __appBackV316();
+      return;
+    }
+
+    const role=(window.uiState&&uiState.role)||session.role||null;
+    const tab=(window.uiState&&uiState.tab)||null;
+
+    if(currentSectionRoot()){
+      confirmSectionExit();
+      return;
+    }
+
+    // Вложенные экраны всегда возвращаются в корень своего раздела,
+    // а не прокликивают историю переходов.
+    if(role==='WAREHOUSE'){
+      session.routeCells=[];session.routeIndex=-1;session.routeActual={};
+      session.revisionCellId=null;session.revisionActual={};session.flow=null;
+      showWarehouse('replenish',false);
+      return;
+    }
+    if(role==='ADMIN'){
+      showAdmin('overview',false);
+      return;
+    }
+    if(role==='OPERATOR'){
+      showOperator(false);
+      return;
+    }
+
+    __appBackV316();
+  }catch(e){
+    console.error('appBack v3.16',e);
+    try{__appBackV316()}catch(_){}
   }
-  __appBackV315();
 };
 
 """;
