@@ -1,6 +1,7 @@
 package com.rsteel.postomatsiz.saftest;
 
 import android.app.Activity;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
@@ -86,8 +87,115 @@ public class MainActivity extends Activity {
             page = page.replace("title='Сотрудники без назначеных СИЗ';goTab='employees';", "title='Сотрудники без назначенных СИЗ';goTab='employees';");
             page = page.replace("title='Свободные активные ячейки';goTab='cells';", "title='Свободные ячейки';goTab='cells';");
             page = page.replace("title='Некорректные связи';goTab='assignments';", "title='Ошибки';goTab='assignments';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.3-standard-classic-ui';");
+            page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
+            int scriptEnd = page.lastIndexOf("</script>");
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
             return page;
         }
+    }
+
+    private String uiPatchScript() {
+        return """
+
+// ===== v3.3 reports/email/physical backup patch =====
+window.__pendingStorageAction=null;
+
+function sendReportByEmail(type,key,email){
+  email=String(email||'').trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('Введите корректный Email','error');return false}
+  if(!nativeStorageAvailable()){
+    window.__pendingStorageAction={kind:'email',type,key,email};
+    chooseNativeStorage();
+    return false;
+  }
+  try{
+    const rec=saveReport(type,key,false);
+    if(typeof NativeStore==='undefined'||typeof NativeStore.sendEmailAttachment!=='function'){
+      toast('Отправка Email недоступна в этой сборке','error');return false;
+    }
+    const subject=(type==='weekly'?'Еженедельный':'Ежемесячный')+' отчёт СИЗ — '+(rec.label||key);
+    const body='Отчёт сформирован в приложении «Постомат СИЗ». Файл приложен к письму.';
+    const result=String(NativeStore.sendEmailAttachment(STORAGE_ROOT+'/Reports/'+rec.fileName,email,subject,body)||'');
+    if(result==='OK'){toast('Открыто приложение для отправки Email. Проверьте письмо и нажмите «Отправить».','ok');return true}
+    if(result==='NO_APP'){toast('На планшете не найдено приложение для отправки Email','error');return false}
+    if(result==='FILE_NOT_FOUND'){toast('Не найден файл отчёта для отправки','error');return false}
+    toast('Не удалось открыть отправку Email'+(result?': '+result:''),'error');return false;
+  }catch(e){toast('Ошибка отправки Email: '+(e.message||e),'error');return false}
+}
+
+window.onNativeFolderSelected=function(){
+  try{
+    const pending=window.__pendingStorageAction;window.__pendingStorageAction=null;
+    if(pending&&pending.kind==='weekly'){
+      saveWeeklyReport(pending.key,false);
+      toast('Недельный отчёт сохранён в Postomat_SIZ/Reports','ok');
+    }else if(pending&&pending.kind==='monthly'){
+      saveMonthlyReport(pending.key,false);
+      toast('Месячный отчёт сохранён в Postomat_SIZ/Reports','ok');
+    }else if(pending&&pending.kind==='backup'){
+      const rec=createBackup(false);
+      toast('Backup сохранён в памяти планшета: '+(rec.path||'Postomat_SIZ/Backup'),'ok');
+    }else if(pending&&pending.kind==='email'){
+      sendReportByEmail(pending.type,pending.key,pending.email);
+    }else{
+      ensureArchive();
+      const hasPhysical=db.archive.backups.some(b=>b.storage==='DEVICE_FILE'&&b.path);
+      if(!hasPhysical&&nativeStorageAvailable()){
+        const rec=createBackup(false);
+        toast('Папка хранения подключена. Первый backup создан: '+(rec.path||'Postomat_SIZ/Backup'),'ok');
+      }else toast('Папка хранения подключена','ok');
+    }
+    showAdmin('reports');
+  }catch(e){toast('Ошибка после выбора папки: '+(e.message||e),'error');showAdmin('reports')}
+};
+
+const __oldRunStorageMaintenance=runStorageMaintenance;
+runStorageMaintenance=function(){
+  __oldRunStorageMaintenance();
+  try{
+    ensureArchive();
+    const hasPhysical=db.archive.backups.some(b=>b.storage==='DEVICE_FILE'&&b.path);
+    if(nativeStorageAvailable()&&!hasPhysical){createBackup(true);saveDb()}
+  }catch(e){console.error('physical backup maintenance',e)}
+};
+
+adminReports=function(){
+  ensureArchive();
+  const months=reportMonths(),weeks=reportWeeks(),mSel=window.__reportMonth||prevMonthKey(),wSel=window.__reportWeek||prevWeekKey();
+  const monthOptions=months.map(k=>`<option value="${k}" ${k===mSel?'selected':''}>${k}</option>`).join('');
+  const weekOptions=weeks.map(k=>`<option value="${k}" ${k===wSel?'selected':''}>${weekLabel(k)}</option>`).join('');
+  const reports=db.archive.reports.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(r=>`<div class="archiveItem"><div class="row"><b>${r.type==='weekly'?'Недельный':'Месячный'} отчёт ${esc(r.label||r.key)}</b><span class="badge">${r.auto?'АВТО':'РУЧНОЙ'}</span></div><div class="meta">${fmtDate(r.createdAt)} • ${esc(r.fileName||'Отчёт.xlsx')}<br>${r.storage==='DEVICE_FILE'?'Файл: '+esc(r.path||r.fileName):'Хранение: внутренний архив'}</div><div class="archiveActions"><button class="btn small primary" data-view-report="${esc(r.id||'')}">Просмотреть</button></div></div>`).join('');
+  const backups=db.archive.backups.slice(0,20).map(r=>`<div class="archiveItem"><div class="row"><b>Backup ${fmtDate(r.createdAt)}</b><span class="badge">${r.auto?'АВТО':'РУЧНОЙ'}</span></div><div class="meta">Размер: ${Math.max(1,Math.round(Number(r.size||0)/1024))} КБ<br>${r.storage==='DEVICE_FILE'&&r.path?'Файл в памяти планшета: '+esc(r.path):'Хранение: внутренний архив приложения'}</div></div>`).join('');
+  const lastBackup=db.archive.backups[0]||null;
+  const last=db.archive.lastBackupAt?fmtDate(db.archive.lastBackupAt):'ещё не создавался';
+  const lastBackupPath=lastBackup&&lastBackup.storage==='DEVICE_FILE'&&lastBackup.path?`<div class="meta" style="margin-top:6px">Файл: ${esc(lastBackup.path)}</div>`:'';
+  return adminHeader('Отчёты','Еженедельный и ежемесячный отчёт читаются сверху вниз как один лист.')+
+  `<div class="betaBar">● ДЕМО-РЕЖИМ: реальные ячейки не открываются. Отчёты и backup сохраняются физически через штатную папку Android.</div>
+  <div class="reportGrid">
+   <div class="reportCard"><h3>Папка хранения</h3><p>Один раз выберите <b>Documents</b> или существующую папку <b>Postomat_SIZ</b>. Приложение будет использовать подпапки Reports и Backup.</p><div class="reportStatus ${nativeStorageAvailable()?'ok':'internal'}" style="margin-top:12px">${esc(nativeStorageLabel())}</div><button id="chooseStorageRoot" class="btn outline block" style="margin-top:12px">ВЫБРАТЬ ПАПКУ ХРАНЕНИЯ</button></div>
+   <div class="reportCard"><h3>Еженедельный отчёт</h3><p>Ключевые показатели → расход по СИЗ → требует внимания → выдачи → пополнения.</p><div class="field" style="margin-top:12px"><label>Неделя</label><select id="reportWeek" class="select">${weekOptions}</select></div><div style="display:grid;gap:8px"><button id="previewWeekReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeWeekReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="weeklyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendWeekReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ НА EMAIL</button></div>
+   <div class="reportCard"><h3>Ежемесячный отчёт</h3><p>Ключевые показатели → расход → сотрудники → отклонения → выдачи → пополнения → корректировки.</p><div class="field" style="margin-top:12px"><label>Месяц</label><select id="reportMonth" class="select">${monthOptions}</select></div><div style="display:grid;gap:8px"><button id="previewMonthReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="monthlyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendMonthReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ НА EMAIL</button></div>
+   <div class="reportCard"><h3>Резервные копии</h3><p>Backup сохраняется физическим файлом в выбранную папку <b>Postomat_SIZ/Backup</b>.</p><div class="reportStatus ${lastBackup&&lastBackup.storage==='DEVICE_FILE'?'ok':'internal'}">Последний: ${last}${lastBackupPath}</div><button id="backupNow" class="btn green block" style="margin-top:12px">СОЗДАТЬ BACKUP В ПАМЯТИ ПЛАНШЕТА</button><div class="fieldRow" style="margin-top:12px"><div class="field"><label>Backup каждые, дней</label><input id="backupDays" class="input" data-vk="number" value="${db.settings.backupEveryDays||7}"></div><div class="field"><label>Хранить недель, шт.</label><input id="backupWeeks" class="input" data-vk="number" value="${db.settings.backupRetentionWeeks||12}"></div></div><div class="field"><label>Хранить месячные отчёты, месяцев</label><input id="reportMonthsKeep" class="input" data-vk="number" value="${db.settings.reportRetentionMonths||12}"></div><button id="saveArchiveSettings" class="btn outline block">СОХРАНИТЬ НАСТРОЙКИ</button></div>
+  </div>
+  <div class="sectionLabel">Архив сформированных отчётов</div>${reports||'<div class="empty">Архив пока пуст. Выберите период и нажмите «Сформировать в архив».</div>'}
+  <div class="sectionLabel">Резервные копии</div>${backups||'<div class="empty">Backup пока нет</div>'}`;
+};
+
+const __oldWireAdmin=wireAdmin;
+wireAdmin=function(tab){
+  __oldWireAdmin(tab);
+  if(tab==='reports'){
+    if(byId('makeWeekReport'))byId('makeWeekReport').onclick=()=>{const key=byId('reportWeek').value;if(!nativeStorageAvailable()){window.__pendingStorageAction={kind:'weekly',key};chooseNativeStorage();return}saveWeeklyReport(key,false);toast('Недельный отчёт сохранён в Postomat_SIZ/Reports','ok');showAdmin('reports')};
+    if(byId('makeReport'))byId('makeReport').onclick=()=>{const key=byId('reportMonth').value;if(!nativeStorageAvailable()){window.__pendingStorageAction={kind:'monthly',key};chooseNativeStorage();return}saveMonthlyReport(key,false);toast('Месячный отчёт сохранён в Postomat_SIZ/Reports','ok');showAdmin('reports')};
+    if(byId('sendWeekReportEmail'))byId('sendWeekReportEmail').onclick=()=>sendReportByEmail('weekly',byId('reportWeek').value,byId('weeklyReportEmail').value);
+    if(byId('sendMonthReportEmail'))byId('sendMonthReportEmail').onclick=()=>sendReportByEmail('monthly',byId('reportMonth').value,byId('monthlyReportEmail').value);
+    if(byId('backupNow'))byId('backupNow').onclick=()=>{if(!nativeStorageAvailable()){window.__pendingStorageAction={kind:'backup'};chooseNativeStorage();return}const rec=createBackup(false);toast('Backup сохранён в памяти планшета: '+(rec.path||'Postomat_SIZ/Backup'),'ok');showAdmin('reports')};
+    attachVirtualInputs(document);
+  }
+};
+
+""";
     }
 
     private String escapeHtml(String x) {
@@ -216,6 +324,26 @@ public class MainActivity extends Activity {
                 }
                 return "Postomat_SIZ/" + relative(path);
             } catch (Exception e) { return ""; }
+        }
+
+        @JavascriptInterface public String sendEmailAttachment(String path, String email, String subject, String body) {
+            try {
+                Uri target = resolve(path, false);
+                if (target == null) return "FILE_NOT_FOUND";
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                send.putExtra(Intent.EXTRA_EMAIL, new String[]{email});
+                send.putExtra(Intent.EXTRA_SUBJECT, subject);
+                send.putExtra(Intent.EXTRA_TEXT, body);
+                send.putExtra(Intent.EXTRA_STREAM, target);
+                send.setClipData(ClipData.newUri(getContentResolver(), "Отчёт СИЗ", target));
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                if (send.resolveActivity(getPackageManager()) == null) return "NO_APP";
+                runOnUiThread(() -> startActivity(Intent.createChooser(send, "Отправить отчёт")));
+                return "OK";
+            } catch (Exception e) {
+                return "ERROR: " + e.getClass().getSimpleName();
+            }
         }
 
         @JavascriptInterface public boolean deleteFile(String path) {
