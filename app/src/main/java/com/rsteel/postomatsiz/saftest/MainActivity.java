@@ -87,7 +87,7 @@ public class MainActivity extends Activity {
             page = page.replace("title='Сотрудники без назначеных СИЗ';goTab='employees';", "title='Сотрудники без назначенных СИЗ';goTab='employees';");
             page = page.replace("title='Свободные активные ячейки';goTab='cells';", "title='Свободные ячейки';goTab='cells';");
             page = page.replace("title='Некорректные связи';goTab='assignments';", "title='Ошибки';goTab='assignments';");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.3-standard-classic-ui';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.4-standard-classic-ui';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -192,6 +192,94 @@ wireAdmin=function(tab){
     if(byId('sendMonthReportEmail'))byId('sendMonthReportEmail').onclick=()=>sendReportByEmail('monthly',byId('reportMonth').value,byId('monthlyReportEmail').value);
     if(byId('backupNow'))byId('backupNow').onclick=()=>{if(!nativeStorageAvailable()){window.__pendingStorageAction={kind:'backup'};chooseNativeStorage();return}const rec=createBackup(false);toast('Backup сохранён в памяти планшета: '+(rec.path||'Postomat_SIZ/Backup'),'ok');showAdmin('reports')};
     attachVirtualInputs(document);
+  }
+};
+
+// ===== v3.4 compact assignments =====
+function compactAssignmentCard(a){
+  const p=ppe(a.ppeId),st=assignmentStatus(a);
+  return `<details class="asCompact">
+    <summary>
+      <div class="asSummaryMain"><b>${esc(p?.name||a.ppeId)}</b><span>Остаток ${a.stock} • Min ${a.min} • Max ${a.target}</span></div>
+      <span class="pill ${st[1]}">${st[0]}</span>
+    </summary>
+    <div class="asCompactBody">
+      <div class="assignmentMetrics">
+        <div class="assignmentMetric"><span>Остаток</span><b>${a.stock}</b></div>
+        <div class="assignmentMetric"><span>Min</span><b>${a.min}</b></div>
+        <div class="assignmentMetric"><span>Max</span><b>${a.target}</b></div>
+        <div class="assignmentMetric"><span>Разово к получению</span><b>${a.issueQty}</b></div>
+        <div class="assignmentMetric"><span>Плановая эксплуатация</span><b>${a.periodDays?a.periodDays+' дн.':'Без срока'}</b></div>
+      </div>
+      <div class="assignmentActions">
+        <button class="btn small outline" data-edit-as="${a.id}">Изменить</button>
+        <button class="btn small outline" data-stock-as="${a.id}">Корректировка</button>
+        <button class="btn small red" data-remove-as="${a.id}">Убрать связь</button>
+      </div>
+    </div>
+  </details>`;
+}
+
+function compactEmployeeAssignments(e,forceOpen){
+  const c=cell(e.cellId),aa=assignForEmployee(e.id);
+  const label=aa.length===1?'1 СИЗ':aa.length+' СИЗ';
+  return `<details class="empAsGroup" ${forceOpen?'open':''}>
+    <summary>
+      <div class="empAsSummary"><b>${esc(e.name)}</b><span>${c?esc(c.name):'Ячейка не присвоена'} • ${label}</span></div>
+      <span class="empAsArrow">▾</span>
+    </summary>
+    <div class="empAsBody">
+      <div class="empAsToolbar">
+        <div class="meta">${c?'Назначения для '+esc(c.name):'Сначала назначьте сотруднику ячейку'}</div>
+        <button class="btn small primary" data-add-as-emp="${e.id}">+ Назначить СИЗ</button>
+      </div>
+      ${aa.length?aa.map(compactAssignmentCard).join(''):'<div class="empty" style="padding:18px">СИЗ сотруднику ещё не назначены</div>'}
+    </div>
+  </details>`;
+}
+
+adminAssignments=function(){
+  const employees=db.employees.filter(e=>e.active).sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru'));
+  const validSelected=window.__adminEmployeeFilter&&employees.some(e=>e.id===window.__adminEmployeeFilter);
+  const selected=validSelected?window.__adminEmployeeFilter:'';
+  if(!validSelected)window.__adminEmployeeFilter=null;
+  const options=['<option value="">Все сотрудники</option>'].concat(employees.map(e=>`<option value="${e.id}" ${e.id===selected?'selected':''}>${esc(e.name)}</option>`)).join('');
+  const shown=selected?employees.filter(e=>e.id===selected):employees;
+  const totalAs=db.assignments.filter(a=>a.active).length;
+  const content=shown.map(e=>compactEmployeeAssignments(e,Boolean(selected))).join('');
+  return adminHeader('Назначения СИЗ','Компактный просмотр по сотрудникам. Один и тот же вид СИЗ можно назначать разным сотрудникам.',`<button id="addAs" class="btn primary">+ Назначение</button>`)+
+  `<style>
+    .asFilterCard{background:#fff;border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:14px}
+    .asFilterMeta{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:9px;font-size:12px;color:var(--muted)}
+    .empAsGroup{background:#fff;border:1px solid var(--line);border-radius:15px;margin-bottom:10px;overflow:hidden}
+    .empAsGroup>summary,.asCompact>summary{list-style:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .empAsGroup>summary::-webkit-details-marker,.asCompact>summary::-webkit-details-marker{display:none}
+    .empAsGroup>summary{display:flex;align-items:center;gap:10px;padding:15px 16px}
+    .empAsSummary{flex:1;min-width:0}.empAsSummary b{display:block;font-size:16px}.empAsSummary span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+    .empAsArrow{font-size:18px;color:var(--muted);transition:.15s}.empAsGroup[open] .empAsArrow{transform:rotate(180deg)}
+    .empAsBody{border-top:1px solid var(--line);padding:11px;background:#f8fafc}
+    .empAsToolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:2px 2px 10px}
+    .asCompact{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+    .asCompact>summary{display:flex;align-items:center;gap:10px;padding:12px}
+    .asSummaryMain{flex:1;min-width:0}.asSummaryMain b{display:block;font-size:14px}.asSummaryMain span{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+    .asCompactBody{border-top:1px solid var(--line);padding:10px}
+    .asCompact .assignmentMetrics{margin-top:0}
+    @media(max-width:520px){.empAsToolbar{align-items:stretch;flex-direction:column}.empAsToolbar .btn{width:100%}.asFilterMeta{align-items:flex-start;flex-direction:column}}
+  </style>
+  <div class="asFilterCard">
+    <div class="field" style="margin:0"><label>Сотрудник</label><select id="assignmentEmployeeFilter" class="select">${options}</select></div>
+    <div class="asFilterMeta"><span>${selected?'Показаны назначения выбранного сотрудника':'Сотрудники свернуты. Нажмите на сотрудника, чтобы раскрыть его СИЗ.'}</span><b>Всего активных назначений: ${totalAs}</b></div>
+  </div>
+  ${content||'<div class="empty">Нет активных сотрудников</div>'}`;
+};
+
+const __wireAdminV34=wireAdmin;
+wireAdmin=function(tab){
+  __wireAdminV34(tab);
+  if(tab==='assignments'){
+    const f=byId('assignmentEmployeeFilter');
+    if(f)f.onchange=()=>{window.__adminEmployeeFilter=f.value||null;showAdmin('assignments')};
+    document.querySelectorAll('[data-add-as-emp]').forEach(b=>b.onclick=()=>assignmentModal(b.dataset.addAsEmp));
   }
 };
 
