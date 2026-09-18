@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.14-standard-classic-ui-warehouse-cards-exit';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.15-standard-classic-ui-single-back-exit';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -783,16 +783,6 @@ function warehouseAtRoot(active){
   return active==='replenish'&&!(session.routeCells&&session.routeCells.length&&session.routeIndex>=0);
 }
 
-const __workspaceV314=workspace;
-workspace=function(role,active,body){
-  const html=__workspaceV314(role,active,body);
-  if(role!=='WAREHOUSE')return html;
-  const button=warehouseAtRoot(active)
-    ? '<button class="navbtn bottom" data-v314-exit="1">Выход</button>'
-    : '<button class="navbtn bottom" data-v314-back="1">← Назад</button>';
-  return html.replace('</aside>',button+'</aside>');
-};
-
 function confirmWarehouseExit(){
   confirmModal('Выйти из раздела?','Завершить работу склада и вернуться на главный экран?','ВЫЙТИ',()=>{
     session.routeCells=[];session.routeIndex=-1;session.routeActual={};session.revisionCellId=null;session.revisionActual={};session.flow=null;
@@ -800,22 +790,33 @@ function confirmWarehouseExit(){
   });
 }
 
-const __wireNavV314=wireNav;
-wireNav=function(role){
-  __wireNavV314(role);
-  if(role!=='WAREHOUSE')return;
-  document.querySelectorAll('[data-v314-back]').forEach(b=>b.onclick=()=>appBack());
-  document.querySelectorAll('[data-v314-exit]').forEach(b=>b.onclick=()=>confirmWarehouseExit());
+// Используем только штатную верхнюю кнопку globalBack.
+// На корневом экране склада она становится "ВЫХОД",
+// во всех вложенных экранах остается "← НАЗАД".
+const __renderV315=render;
+render=function(html){
+  __renderV315(html);
+  const b=byId('globalBack');
+  if(!b)return;
+  const role=(window.uiState&&uiState.role)||session.role||null;
+  const tab=(window.uiState&&uiState.tab)||null;
+  if(role==='WAREHOUSE'&&tab==='replenish'&&warehouseAtRoot('replenish')){
+    b.textContent='ВЫХОД';
+    b.title='Выйти из раздела';
+  }else{
+    b.textContent='← НАЗАД';
+    b.title='Назад';
+  }
 };
 
-const __appBackV314=window.appBack;
+const __appBackV315=window.appBack;
 window.appBack=function(){
   const role=(window.uiState&&uiState.role)||session.role||null;
   const tab=(window.uiState&&uiState.tab)||null;
   if(role==='WAREHOUSE'&&tab==='replenish'&&warehouseAtRoot('replenish')){
     confirmWarehouseExit();return;
   }
-  __appBackV314();
+  __appBackV315();
 };
 
 """;
