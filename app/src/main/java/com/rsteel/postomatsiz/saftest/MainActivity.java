@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.7-standard-classic-ui-warehouse';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.8-standard-classic-ui-warehouse-login';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -601,6 +601,31 @@ function showWarehouse(tab='replenish',push=true){
     if(byId('histRevision'))byId('histRevision').onclick=()=>{session.whHistoryType='revision';showWarehouse('history')};
   }
 }
+
+// ===== v3.8 role entry screen: admin + warehouse =====
+showBetaHome=function(push=true){
+  if(push)setUi({screen:'home'},true);else uiState={screen:'home',role:null,tab:null};
+  session.role=null;session.user=null;session.sid='DEMO-SID';session.connected=true;session.mode='DEMO';
+  render(`<div class="betaHome">
+    <div class="betaHero">
+      <div class="betaTag">● БЕТА • РЕАЛЬНЫЙ ПОСТОМАТ ОТКЛЮЧЁН</div>
+      <h1>Постомат СИЗ</h1>
+      <p>Выберите рабочий контур. В тестовой версии команды на реальный контроллер не отправляются.</p>
+      <div style="height:20px"></div>
+      <div style="display:grid;gap:10px">
+        <button id="betaWarehouse" class="btn" style="background:#fff;color:#0f4f99;width:100%;height:56px;font-size:16px">ВХОД ДЛЯ СКЛАДА</button>
+        <button id="betaAdmin" class="btn" style="background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.55);color:#fff;width:100%;height:52px;font-size:15px">ВХОД В АДМИНКУ</button>
+      </div>
+    </div>
+    <div class="betaSteps">
+      <div class="betaStep"><b>Склад</b><span>Восполнение ячеек, ревизия и история выполненных операций.</span></div>
+      <div class="betaStep"><b>Администратор</b><span>Сотрудники, ячейки, СИЗ, назначения, остатки, журналы, отчёты и настройки.</span></div>
+      <div class="betaStep"><b>Оператор</b><span>Контур выдачи СИЗ подключим отдельным этапом после проверки склада.</span></div>
+    </div>
+  </div>`);
+  byId('betaWarehouse').onclick=()=>showUserLogin('WAREHOUSE');
+  byId('betaAdmin').onclick=()=>showUserLogin('ADMIN');
+};
 
 """;
     }
