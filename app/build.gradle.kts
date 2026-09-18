@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 8
-        versionName = "3.5-standard-classic-ui-native-keyboard"
+        versionCode = 9
+        versionName = "3.6-standard-classic-ui-labels"
     }
 
     buildTypes {
