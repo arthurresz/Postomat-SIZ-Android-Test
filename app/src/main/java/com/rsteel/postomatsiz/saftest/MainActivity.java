@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.19-standard-classic-ui-root-exit-fix';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.20-standard-classic-ui-clean-home-login-nav';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -1025,19 +1025,26 @@ showOperator=function(push=true){
 const __showUserLoginV319=showUserLogin;
 showUserLogin=function(role,push=true){
   __showUserLoginV319(role,push);
-  const b=byId('globalBack');
-  if(b){
-    b.style.display='';
-    b.textContent='← НАЗАД';
-    b.title='Назад';
-    b.onclick=()=>window.appBack();
+
+  // На экране выбора пользователя / ввода PIN оставляем только
+  // внутреннюю кнопку "Назад". Верхнюю globalBack удаляем.
+  const topBack=byId('globalBack');
+  if(topBack)topBack.remove();
+
+  const backRoles=byId('backRoles');
+  if(backRoles){
+    backRoles.textContent='← НАЗАД';
+    backRoles.onclick=()=>showBetaHome(false);
   }
 };
 
 const __showBetaHomeV319=showBetaHome;
 showBetaHome=function(push=true){
   __showBetaHomeV319(push);
-  syncGlobalSectionButton();
+
+  // На главном экране выбора раздела кнопки "Назад" быть не должно.
+  const topBack=byId('globalBack');
+  if(topBack)topBack.remove();
 };
 
 """;
