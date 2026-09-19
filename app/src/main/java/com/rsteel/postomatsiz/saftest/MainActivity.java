@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.43-standard-classic-ui-user-pin-selection';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.44-standard-classic-ui-8-consumables-grid';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -3140,6 +3140,51 @@ showOperator=function(push=true){
   __showOperatorV340(push);
   enhanceOperatorIssueV340();
 };
+
+""";
+    }
+
+
+    private String operatorConsumablesGridPatchScript() {
+        return """
+
+// ===== v3.44 compact consumables grid: at least 8 visible on tablet =====
+(function installOperatorConsumablesGridV344(){
+  if(byId('operatorConsumablesGridStyleV344'))return;
+  const s=document.createElement('style');
+  s.id='operatorConsumablesGridStyleV344';
+  s.textContent=
+    '.issueLayout{grid-template-columns:minmax(0,1fr) 218px!important;gap:10px!important;align-items:start!important;}'
+    +'.issueLayout>.cards2{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important;}'
+    +'.issueLayout .ppeCard{min-width:0!important;height:122px!important;min-height:122px!important;max-height:122px!important;border-radius:12px!important;padding:9px!important;overflow:hidden!important;}'
+    +'.issueLayout .ppeTop{gap:5px!important;align-items:flex-start!important;}'
+    +'.issueLayout .ppeTop>div:first-child{min-width:0!important;flex:1!important;}'
+    +'.issueLayout .ppeName{font-size:12px!important;line-height:1.18!important;min-height:29px!important;max-height:29px!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important;}'
+    +'.issueLayout .badge{font-size:8px!important;padding:3px 5px!important;border-radius:999px!important;max-width:58px!important;overflow:hidden!important;text-overflow:ellipsis!important;}'
+    +'.issueLayout .meta{font-size:9px!important;line-height:1.15!important;gap:5px!important;margin-top:4px!important;display:block!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}'
+    +'.issueLayout .meta span{margin-right:5px!important;}'
+    +'.issueLayout .ppeCard>.sub{display:none!important;}'
+    +'.issueLayout .qtyRow{margin-top:7px!important;gap:4px!important;flex-wrap:nowrap!important;}'
+    +'.issueLayout .qtyRow>span:first-child{font-size:9px!important;white-space:nowrap!important;}'
+    +'.issueLayout .qtyRow>.sub{display:inline!important;font-size:9px!important;white-space:nowrap!important;}'
+    +'.issueLayout .qty{width:48px!important;height:30px!important;border-radius:7px!important;font-size:12px!important;padding:0 3px!important;}'
+    +'.issueLayout>.card.sticky{padding:11px!important;border-radius:12px!important;top:6px!important;}'
+    +'.issueLayout>.card.sticky>.sub:first-child{font-size:9px!important;}'
+    +'.issueLayout .stateBig{font-size:18px!important;margin:3px 0 7px!important;}'
+    +'.issueLayout>.card.sticky .h2{font-size:13px!important;margin:0!important;}'
+    +'.issueLayout #issueSummary{min-height:42px!important;max-height:105px!important;overflow:auto!important;margin-top:4px!important;}'
+    +'.issueLayout #issueSummary .summaryLine,.issueLayout .operatorChosenV340 .summaryLine{padding:4px 5px!important;margin-bottom:3px!important;font-size:9px!important;border-radius:7px!important;}'
+    +'.issueLayout #issueSummary .summaryLine b,.issueLayout .operatorChosenV340 .summaryLine b{font-size:12px!important;}'
+    +'.issueLayout #flowHint{font-size:9px!important;line-height:1.25!important;padding:7px 8px!important;margin-top:6px!important;}'
+    +'.issueLayout #openIssue,.issueLayout #confirmIssue{height:36px!important;font-size:10px!important;margin-top:6px!important;}'
+    +'.operatorStepsV340{gap:6px!important;margin:0 0 8px!important;}'
+    +'.operatorStepV340{min-height:46px!important;padding:7px 8px!important;gap:6px!important;border-radius:10px!important;}'
+    +'.operatorStepV340 .n{width:22px!important;height:22px!important;font-size:10px!important;}'
+    +'.operatorStepV340 b{font-size:10px!important}.operatorStepV340 span{font-size:8px!important;}'
+    +'@media(max-width:720px){.issueLayout{grid-template-columns:minmax(0,1fr) 190px!important}.issueLayout>.cards2{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important}.issueLayout .ppeCard{height:116px!important;min-height:116px!important;max-height:116px!important;padding:7px!important}.issueLayout .ppeName{font-size:11px!important}}'
+    +'@media(max-width:560px){.issueLayout{grid-template-columns:1fr!important}.issueLayout>.cards2{grid-template-columns:repeat(2,minmax(0,1fr))!important}.issueLayout .ppeCard{height:112px!important;min-height:112px!important;max-height:112px!important}}';
+  document.head.appendChild(s);
+})();
 
 """;
     }
