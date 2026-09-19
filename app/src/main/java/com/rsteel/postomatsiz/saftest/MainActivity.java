@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     private static final String PREF_CONTROLLER_SECRET = "postomat_controller_password_secret";
     private static final String SMTP_KEY_ALIAS = "postomat_siz_smtp_key";
     private static final String CONTROLLER_KEY_ALIAS = "postomat_controller_key";
+    private static final String DEFAULT_CONTROLLER_PASSWORD = "admin";
     private static final String SMTP_HOST = "smtp.mail.ru";
     private static final int SMTP_PORT = 465;
     private WebView webView;
@@ -122,7 +123,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.48-RC2';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.49-RC3';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + productionRcPatchScript() + autoStartConnectPatchScript() + page.substring(scriptEnd);
@@ -3644,11 +3645,6 @@ async function rc2AutoConnectV348(){
     return;
   }
 
-  if(!NativeStore.hasControllerCredentials()){
-    showConnect(false);
-    return;
-  }
-
   const address=String(NativeStore.getControllerAddress()||'http://10.10.10.1');
   db.settings.address=address;
   saveDb();
@@ -3708,18 +3704,14 @@ showConnect=function(push=true){
   session.sid=null;
   session.apiRole='';
 
-  const stored=rc2NativeReadyV348()&&NativeStore.hasControllerCredentials();
-  const address=stored
-    ?String(NativeStore.getControllerAddress()||'http://10.10.10.1')
-    :String(db.settings.address||'http://10.10.10.1');
+  const stored=true;
+  const address=String(NativeStore.getControllerAddress()||db.settings.address||'http://10.10.10.1');
 
   render('<div class="centerScreen"><div class="panel connectPanel" style="max-width:620px;margin:28px auto">'
-    +'<div class="h1">'+(stored?'Настройка подключения':'Первичная настройка постамата')+'</div>'
-    +'<p class="sub">'+(stored
-      ?'Сохранённое подключение можно изменить. После сохранения приложение будет подключаться автоматически.'
-      :'Введите пароль контроллера один раз. Он будет зашифрован Android Keystore и больше запрашиваться не будет.')+'</p>'
+    +'<div class="h1">Настройка подключения</div>'
+    +'<p class="sub">Обычно менять ничего не нужно: приложение автоматически использует адрес 10.10.10.1 и локальный пароль контроллера. Здесь параметры можно изменить только при необходимости.</p>'
     +'<div class="field" style="margin-top:16px"><label>Адрес контроллера</label><input id="rcControllerAddr" class="input" data-vk="latin" value="'+esc(address)+'"></div>'
-    +'<div class="field"><label>Пароль штатного web-интерфейса</label><input id="rcControllerPassword" class="input" type="password" autocomplete="off" placeholder="'+(stored?'Оставьте пустым, чтобы не менять':'Введите пароль')+'"></div>'
+    +'<div class="field"><label>Пароль штатного web-интерфейса</label><input id="rcControllerPassword" class="input" type="password" autocomplete="off" placeholder="Оставьте пустым для стандартного пароля"></div>'
     +'<button id="rcConnectBtn" class="btn primary block" style="margin-top:14px">'+(stored?'СОХРАНИТЬ И ПОДКЛЮЧИТЬСЯ':'СОХРАНИТЬ И ПОДКЛЮЧИТЬСЯ')+'</button>'
     +(stored?'<button id="rcForgetBtn" class="btn outline block" style="margin-top:8px">СБРОСИТЬ СОХРАНЁННОЕ ПОДКЛЮЧЕНИЕ</button>':'')
     +'<div id="rcConnectMsg" class="sub" style="margin-top:12px"></div>'
@@ -3734,11 +3726,11 @@ showConnect=function(push=true){
     btn.disabled=true;
     byId('rcConnectMsg').textContent='Проверяю и сохраняю подключение…';
     try{
-      if(!stored||pwd){
+      if(pwd){
         const test=await apiLogin(addr,pwd);
         if(!test.sid)throw new Error('Контроллер не вернул SID');
         if(!NativeStore.saveControllerCredentials(addr,pwd)){
-          throw new Error('Не удалось сохранить пароль в защищённом хранилище Android');
+          throw new Error('Не удалось сохранить параметры подключения');
         }
       }else{
         if(!NativeStore.updateControllerAddress(addr)){
@@ -4103,7 +4095,7 @@ setTimeout(function(){
         try {
             String iv64 = prefs.getString(PREF_CONTROLLER_IV, "");
             String sec64 = prefs.getString(PREF_CONTROLLER_SECRET, "");
-            if (iv64 == null || sec64 == null || iv64.isEmpty() || sec64.isEmpty()) return "";
+            if (iv64 == null || sec64 == null || iv64.isEmpty() || sec64.isEmpty()) return DEFAULT_CONTROLLER_PASSWORD;
             KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
             ks.load(null);
             SecretKey key = (SecretKey) ks.getKey(CONTROLLER_KEY_ALIAS, null);
@@ -4114,7 +4106,7 @@ setTimeout(function(){
             byte[] dec = cipher.doFinal(Base64.decode(sec64, Base64.DEFAULT));
             return new String(dec, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            return "";
+            return DEFAULT_CONTROLLER_PASSWORD;
         }
     }
 
@@ -4124,7 +4116,7 @@ setTimeout(function(){
     }
 
     private boolean controllerCredentialsReady() {
-        return !controllerPassword().isEmpty();
+        return true;
     }
 
     private void clearControllerCredentials() {
@@ -4219,11 +4211,6 @@ setTimeout(function(){
         @JavascriptInterface public String postomatAutoLogin() {
             try {
                 String password = controllerPassword();
-                if (password.isEmpty()) {
-                    JSONObject o = new JSONObject();
-                    o.put("error", "NOT_CONFIGURED");
-                    return o.toString();
-                }
                 String root = controllerAddress();
                 String body = "password=" + URLEncoder.encode(password, "UTF-8");
                 return postomatHttp(root + "/api/login", "POST", body, "application/x-www-form-urlencoded");
