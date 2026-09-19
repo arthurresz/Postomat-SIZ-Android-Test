@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.26-standard-classic-ui-readable-reports';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.27-standard-classic-ui-monthly-issued-by-person';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + page.substring(scriptEnd);
@@ -1527,6 +1527,38 @@ function rrCurrentAttention(){
   return out;
 }
 
+function rrMonthlyIssuedByEmployeePpe(d){
+  const map={};
+  d.issues.forEach(function(x){
+    const employeeName=String(x.userName||x.userId||'—');
+    const ppeName=String(x.ppeName||x.ppeId||'—');
+    const key=employeeName+'\u0001'+ppeName;
+    if(!map[key]){
+      map[key]={
+        employee:employeeName,
+        cell:x.cellId?('№'+x.cellId):'—',
+        ppe:ppeName,
+        qty:0,
+        count:0,
+        dates:[]
+      };
+    }
+    map[key].qty+=Number(x.qty||0);
+    map[key].count++;
+    if(x.ts)map[key].dates.push(x.ts);
+    if(x.cellId)map[key].cell='№'+x.cellId;
+  });
+  return Object.values(map).map(function(x){
+    const dates=x.dates.slice().sort(function(a,b){return new Date(a)-new Date(b)});
+    x.first=dates.length?reportFmtDate(dates[0]):'—';
+    x.last=dates.length?reportFmtDate(dates[dates.length-1]):'—';
+    return x;
+  }).sort(function(a,b){
+    const e=String(a.employee).localeCompare(String(b.employee),'ru');
+    return e!==0?e:String(a.ppe).localeCompare(String(b.ppe),'ru');
+  });
+}
+
 styledSheetXml=function(rows,merges){
   merges=merges||[];
   let rr='';
@@ -1633,17 +1665,16 @@ buildOneSheetXlsx=function(type,key){
 
   let sectionNo=3;
   if(type==='monthly'){
-    rrMergeRow(rows,merges,sectionNo+'. ВЫДАЧА ПО СОТРУДНИКАМ',3);sectionNo++;
-    rrRow(rows,['Сотрудник','Выдано, шт.','Видов СИЗ','Операций','Первая выдача','Последняя выдача','Ячейка','',''],4);
-    const empRows=Object.values(d.byEmp).sort(function(a,b){return String(a.user).localeCompare(String(b.user),'ru')});
-    if(empRows.length){
-      empRows.forEach(function(x){
-        const e=db.employees.find(function(e){return e.name===x.user});
-        const dates=x.dates.slice().sort();
-        rrRow(rows,[x.user,x.q,x.items.size,x.count,dates.length?reportFmtDate(dates[0]):'—',dates.length?reportFmtDate(dates[dates.length-1]):'—',e&&e.cellId?'№'+e.cellId:'—','',''],7);
+    rrMergeRow(rows,merges,sectionNo+'. ВЫДАНО СИЗ СОТРУДНИКАМ ЗА МЕСЯЦ',3);sectionNo++;
+    rrRow(rows,['Сотрудник','Ячейка','СИЗ','Выдано, шт.','Кол-во выдач','Первая выдача','Последняя выдача','',''],4);
+    const issuedRows=rrMonthlyIssuedByEmployeePpe(d);
+    if(issuedRows.length){
+      issuedRows.forEach(function(x){
+        rrRow(rows,[x.employee,x.cell,x.ppe,x.qty,x.count,x.first,x.last,'',''],7);
       });
+      rrRow(rows,['ИТОГО','','',d.totalIssued,'','','','',''],11);
     }else{
-      const r=rows.length+1;rrRow(rows,['Выдач за период нет'],10);merges.push('A'+r+':I'+r);
+      const r=rows.length+1;rrRow(rows,['В выбранном месяце выдач СИЗ не было'],10);merges.push('A'+r+':I'+r);
     }
 
     rrMergeRow(rows,merges,sectionNo+'. ОТКЛОНЕНИЯ И КОНТРОЛЬ',3);sectionNo++;
@@ -1749,6 +1780,34 @@ buildOneSheetXlsx=function(type,key){
     {name:'xl/styles.xml',text:styles},
     {name:'xl/worksheets/sheet1.xml',text:sheet}
   ]);
+};
+
+const __reportPreviewHtmlV327=reportPreviewHtml;
+reportPreviewHtml=function(type,key){
+  const base=__reportPreviewHtmlV327(type,key);
+  if(type!=='monthly')return base;
+
+  const d=calcReportData(type,key);
+  const issuedRows=rrMonthlyIssuedByEmployeePpe(d);
+  const body=issuedRows.length
+    ?issuedRows.map(function(x){
+      return '<tr><td>'+esc(x.employee)+'</td><td>'+esc(x.cell)+'</td><td>'+esc(x.ppe)+'</td><td>'+x.qty+'</td><td>'+x.count+'</td><td>'+esc(x.first)+'</td><td>'+esc(x.last)+'</td></tr>';
+    }).join('')
+    :'<tr><td colspan="7">В выбранном месяце выдач СИЗ не было</td></tr>';
+
+  const section='<div class="reportSection">3. ВЫДАНО СИЗ СОТРУДНИКАМ ЗА МЕСЯЦ</div>'
+    +'<div class="reportTableWrap"><table class="reportTable"><thead><tr>'
+    +'<th>Сотрудник</th><th>Ячейка</th><th>СИЗ</th><th>Выдано, шт.</th><th>Кол-во выдач</th><th>Первая выдача</th><th>Последняя выдача</th>'
+    +'</tr></thead><tbody>'+body
+    +(issuedRows.length?'<tr><td><b>ИТОГО</b></td><td></td><td></td><td><b>'+d.totalIssued+'</b></td><td></td><td></td><td></td></tr>':'')
+    +'</tbody></table></div>';
+
+  const startMarker='<div class="reportSection">3. ВЫДАЧА ПО СОТРУДНИКАМ</div>';
+  const endMarker='<div class="reportSection">4. ОТКЛОНЕНИЯ И КОНТРОЛЬ</div>';
+  const start=base.indexOf(startMarker);
+  const end=base.indexOf(endMarker);
+  if(start>=0&&end>start)return base.slice(0,start)+section+base.slice(end);
+  return base+section;
 };
 
 """;
