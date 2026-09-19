@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.29-standard-classic-ui-replenishment-data-fix';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.30-standard-classic-ui-monthly-movement-cleanup';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -1750,27 +1750,24 @@ buildOneSheetXlsx=function(type,key){
     merges.push('A'+r+':I'+r);
   }
 
-  rrMergeRow(rows,merges,'2. ДВИЖЕНИЕ ПО ВИДАМ СИЗ',3);
-  rrRow(rows,['СИЗ','Выдано','Выдач','Сотрудников','Пополнено','Остаток','Max','Пополнить','Статус'],4);
-  const ppeNames=new Set([].concat(Object.keys(d.byPpe),Object.keys(d.replByPpe),db.ppe.filter(function(x){return x.active}).map(function(x){return x.name})));
-  const ppeRows=[];
-  Array.from(ppeNames).sort(function(a,b){return a.localeCompare(b,'ru')}).forEach(function(name){
+  rrMergeRow(rows,merges,'2. ДВИЖЕНИЕ СИЗ ЗА ПЕРИОД',3);
+  rrRow(rows,['СИЗ','Выдано, шт.','Пополнено, шт.','Баланс движения','Кол-во выдач','Сотрудников','','',''],4);
+  const movementNames=new Set([].concat(Object.keys(d.byPpe),Object.keys(d.replByPpe)));
+  const movementRows=[];
+  Array.from(movementNames).sort(function(a,b){return a.localeCompare(b,'ru')}).forEach(function(name){
     const stat=d.byPpe[name]||{q:0,count:0,people:new Set()};
-    const pp=db.ppe.find(function(x){return x.name===name});
-    const as=db.assignments.filter(function(a){return a.active&&pp&&a.ppeId===pp.id});
-    const stock=as.reduce(function(s,a){return s+Number(a.stock||0)},0);
-    const target=as.reduce(function(s,a){return s+Number(a.target||0)},0);
-    const need=as.reduce(function(s,a){return s+(Number(a.stock||0)<=Number(a.min||0)?Math.max(0,Number(a.target||0)-Number(a.stock||0)):0)},0);
-    const repl=d.replByPpe[name]||0;
-    if(Number(stat.q||0)>0||Number(repl)>0||need>0){
-      ppeRows.push([name,stat.q,stat.count,stat.people.size,repl,stock,target,need,need>0?'ПОПОЛНИТЬ':'НОРМА']);
+    const issued=Number(stat.q||0);
+    const repl=Number(d.replByPpe[name]||0);
+    if(issued>0||repl>0){
+      movementRows.push([name,issued,repl,repl-issued,Number(stat.count||0),stat.people.size,'','','']);
     }
   });
-  if(ppeRows.length){
-    ppeRows.forEach(function(x){rrRow(rows,x,x[7]>0?8:7)});
+  if(movementRows.length){
+    movementRows.forEach(function(x){rrRow(rows,x,7)});
+    rrRow(rows,['ИТОГО',d.totalIssued,d.totalRepl,d.totalRepl-d.totalIssued,'','','','',''],11);
   }else{
     const r=rows.length+1;
-    rrRow(rows,['За период движения по СИЗ не было, пополнение не требуется'],10);
+    rrRow(rows,['За выбранный период выдач и пополнений не было'],10);
     merges.push('A'+r+':I'+r);
   }
 
@@ -1998,6 +1995,46 @@ showAdmin=function(tab='overview',push=true){
     window.__reportMonth=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
   }
   __showAdminV329(tab,push);
+};
+
+""";
+    }
+
+
+    private String monthlyMovementPreviewPatchScript() {
+        return """
+
+// ===== v3.30 monthly movement preview: period data only =====
+const __reportPreviewHtmlV330=reportPreviewHtml;
+reportPreviewHtml=function(type,key){
+  const base=__reportPreviewHtmlV330(type,key);
+  if(type!=='monthly')return base;
+
+  const d=calcReportData(type,key);
+  const names=new Set([].concat(Object.keys(d.byPpe),Object.keys(d.replByPpe)));
+  const rows=[];
+  Array.from(names).sort(function(a,b){return a.localeCompare(b,'ru')}).forEach(function(name){
+    const stat=d.byPpe[name]||{q:0,count:0,people:new Set()};
+    const issued=Number(stat.q||0);
+    const repl=Number(d.replByPpe[name]||0);
+    if(issued>0||repl>0){
+      rows.push('<tr><td>'+esc(name)+'</td><td>'+issued+'</td><td>'+repl+'</td><td>'+(repl-issued)+'</td><td>'+Number(stat.count||0)+'</td><td>'+stat.people.size+'</td></tr>');
+    }
+  });
+
+  const movement='<div class="reportSection">2. ДВИЖЕНИЕ СИЗ ЗА МЕСЯЦ</div>'
+    +'<div class="reportTableWrap"><table class="reportTable"><thead><tr>'
+    +'<th>СИЗ</th><th>Выдано, шт.</th><th>Пополнено, шт.</th><th>Баланс движения</th><th>Кол-во выдач</th><th>Сотрудников</th>'
+    +'</tr></thead><tbody>'
+    +(rows.length?rows.join('')+'<tr><td><b>ИТОГО</b></td><td><b>'+d.totalIssued+'</b></td><td><b>'+d.totalRepl+'</b></td><td><b>'+(d.totalRepl-d.totalIssued)+'</b></td><td></td><td></td></tr>':'<tr><td colspan="6">За выбранный месяц выдач и пополнений не было</td></tr>')
+    +'</tbody></table></div>';
+
+  const startMarker='<div class="reportSection">2. РАСХОД ПО ВИДАМ СИЗ</div>';
+  const endMarker='<div class="reportSection">3. ВЫДАНО СИЗ СОТРУДНИКАМ ЗА МЕСЯЦ</div>';
+  const start=base.indexOf(startMarker);
+  const end=base.indexOf(endMarker);
+  if(start>=0&&end>start)return base.slice(0,start)+movement+base.slice(end);
+  return base;
 };
 
 """;
