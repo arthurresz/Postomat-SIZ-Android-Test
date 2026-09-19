@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.42-standard-classic-ui-20-user-grid';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.43-standard-classic-ui-user-pin-selection';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorGuidedFlowPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -2749,6 +2749,80 @@ const __showUserLoginV342=showUserLogin;
 showUserLogin=function(role,push=true){
   __showUserLoginV342(role,push);
   if(role==='OPERATOR')applyOperatorUserGrid();
+};
+
+""";
+    }
+
+
+    private String operatorPinSelectionPatchScript() {
+        return """
+
+// ===== v3.43 explicit employee selection + immediate PIN entry =====
+function decorateOperatorPinSelectionV343(){
+  const grid=document.querySelector('.userGrid');
+  const panel=document.querySelector('.pinLoginPanel');
+  const selectedName=byId('selectedName');
+  const counter=byId('pinCounter');
+  if(!grid||!panel||!selectedName)return;
+
+  let style=byId('operatorPinSelectionStyleV343');
+  if(!style){
+    style=document.createElement('style');
+    style.id='operatorPinSelectionStyleV343';
+    style.textContent=
+      '.pinLoginPanel.operatorPinAwaitV343{opacity:.62;transition:.16s;}'
+      +'.pinLoginPanel.operatorPinReadyV343{opacity:1;transition:.16s;}'
+      +'.operatorPinPromptV343{font-size:10px;color:#6b7788;margin-top:3px;line-height:1.25;}'
+      +'.userGrid .userCard.operatorChosenV343{border:2px solid #1263b6!important;background:#eaf4ff!important;box-shadow:0 0 0 2px rgba(18,99,182,.10)!important;}'
+      +'.userGrid .userCard.operatorChosenV343:after{content:"✓";position:absolute;right:7px;top:5px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#1263b6;color:#fff;font-size:12px;font-weight:900;}'
+      +'.userGrid .userCard{position:relative!important;}';
+    document.head.appendChild(style);
+  }
+
+  let prompt=byId('operatorPinPromptV343');
+  if(!prompt){
+    prompt=document.createElement('div');
+    prompt.id='operatorPinPromptV343';
+    prompt.className='operatorPinPromptV343';
+    selectedName.insertAdjacentElement('afterend',prompt);
+  }
+
+  function sync(){
+    const chosen=grid.querySelector('.userCard.selected');
+    grid.querySelectorAll('.userCard').forEach(function(card){
+      card.classList.toggle('operatorChosenV343',card===chosen);
+    });
+
+    if(chosen){
+      panel.classList.remove('operatorPinAwaitV343');
+      panel.classList.add('operatorPinReadyV343');
+      const fio=String(chosen.querySelector('b')?chosen.querySelector('b').textContent:'').trim();
+      selectedName.textContent='Введите PIN для: '+fio;
+      prompt.textContent='Ошиблись? Просто выберите другого сотрудника — введённый PIN очистится.';
+      if(counter&&String(counter.textContent||'').indexOf('Сначала')>=0)counter.textContent='0 цифр';
+    }else{
+      panel.classList.add('operatorPinAwaitV343');
+      panel.classList.remove('operatorPinReadyV343');
+      selectedName.textContent='Сначала выберите сотрудника';
+      prompt.textContent='После выбора фамилии PIN-панель сразу станет активной.';
+    }
+  }
+
+  grid.querySelectorAll('.userCard').forEach(function(card){
+    card.addEventListener('click',function(){
+      // Штатный onclick уже переключает выбранного пользователя и очищает PIN.
+      setTimeout(sync,0);
+    });
+  });
+
+  sync();
+}
+
+const __showUserLoginV343=showUserLogin;
+showUserLogin=function(role,push=true){
+  __showUserLoginV343(role,push);
+  if(role==='OPERATOR')decorateOperatorPinSelectionV343();
 };
 
 """;
