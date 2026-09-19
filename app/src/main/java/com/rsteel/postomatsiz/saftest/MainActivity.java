@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.33-standard-classic-ui-issue-remaining';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.34-standard-classic-ui-issue-log-fix';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -2130,17 +2130,31 @@ function simpleIssueReportTitle(type){
 
 function simpleIssueRows(type,key){
   const d=calcReportData(type,key);
-  const rows=d.issues.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts)}).map(function(x){
-    const dt=new Date(x.ts);
-    const cellName=(cell(x.cellId)&&cell(x.cellId).name)?cell(x.cellId).name:('№'+x.cellId);
+  const p=periodData(type,key);
+  const source=Array.isArray(db.issueLog)?db.issueLog:[];
+  const rows=source.filter(function(x){
+    const raw=x.ts||x.createdAt||x.dateTime||x.date;
+    if(!raw)return false;
+    const dt=new Date(raw);
+    return !isNaN(dt.getTime())&&dt>=p.start&&dt<p.end;
+  }).sort(function(a,b){
+    return new Date(a.ts||a.createdAt||a.dateTime||a.date)-new Date(b.ts||b.createdAt||b.dateTime||b.date);
+  }).map(function(x){
+    const raw=x.ts||x.createdAt||x.dateTime||x.date;
+    const dt=new Date(raw);
+    const cid=x.cellId!=null?x.cellId:'—';
+    const cellName=(cell(cid)&&cell(cid).name)?cell(cid).name:(cid==='—'?'—':'№'+cid);
+    const qty=Number(x.qty!=null?x.qty:(x.issued!=null?x.issued:x.count)||0);
+    const before=Number(x.before!=null?x.before:0);
+    const remain=Number(x.after!=null?x.after:Math.max(0,before-qty));
     return {
       date:reportFmtDate(dt),
       time:pad2(dt.getHours())+':'+pad2(dt.getMinutes()),
       cell:cellName,
-      ppe:x.ppeName||x.ppeId||'—',
-      employee:x.userName||x.userId||'—',
-      qty:Number(x.qty||0),
-      remain:Number(x.after||0)
+      ppe:x.ppeName||x.nomenclature||x.ppeId||'—',
+      employee:x.userName||x.employeeName||x.recipientName||x.userId||'—',
+      qty:qty,
+      remain:remain
     };
   });
   return {d:d,rows:rows};
@@ -2193,7 +2207,7 @@ buildOneSheetXlsx=function(type,key){
   let rr='';
   rows.forEach(function(row,ri){
     let cc='';
-    for(let ci=0;ci<6;ci++){
+    for(let ci=0;ci<7;ci++){
       const x=row[ci]||{v:null,s:0};
       cc+=cellXml(x.v,colName(ci+1)+(ri+1),x.s||0);
     }
@@ -2204,8 +2218,8 @@ buildOneSheetXlsx=function(type,key){
   });
 
   const merges=items.length
-    ?'<mergeCells count="3"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/></mergeCells>'
-    :'<mergeCells count="4"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/><mergeCell ref="A5:F5"/></mergeCells>';
+    ?'<mergeCells count="3"><mergeCell ref="A1:G1"/><mergeCell ref="A2:G2"/><mergeCell ref="A3:G3"/></mergeCells>'
+    :'<mergeCells count="4"><mergeCell ref="A1:G1"/><mergeCell ref="A2:G2"/><mergeCell ref="A3:G3"/><mergeCell ref="A5:G5"/></mergeCells>';
 
   const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -2295,6 +2309,89 @@ reportPreviewHtml=function(type,key){
     +(items.length?'<tr><td><b>ИТОГО</b></td><td></td><td></td><td></td><td></td><td><b>'+totalQty+'</b></td><td></td></tr>':'')
     +'</tbody></table></div>'
     +'</div>';
+};
+
+""";
+    }
+
+
+    private String issueLogFixPatchScript() {
+        return """
+
+// ===== v3.34 guaranteed issue logging =====
+confirmIssue=function(){
+  if(!session.flow||!session.flow.closed){
+    toast('Сначала закройте ячейку','error');
+    return;
+  }
+
+  updateIssueSummary();
+  const selected=Object.entries(issueSelection)
+    .map(function(x){
+      const a=db.assignments.find(function(z){return z.id===x[0]});
+      return {a:a,q:Math.max(0,Number(x[1]||0))};
+    })
+    .filter(function(x){return x.a&&x.q>0});
+
+  if(!selected.length){
+    toast('Не выбраны СИЗ для выдачи','error');
+    return;
+  }
+
+  for(const x of selected){
+    if(x.q>Number(x.a.stock||0)){
+      toast('Остаток изменился. Обновите экран и повторите выдачу.','error');
+      return;
+    }
+  }
+
+  const rows=selected.map(function(x){
+    return esc(ppe(x.a.ppeId)?ppe(x.a.ppeId).name:x.a.ppeId)+' — <b>'+x.q+'</b>';
+  }).join('<br>');
+
+  confirmModal('Подтверждение выдачи',rows,'ПОДТВЕРДИТЬ',function(){
+    const tx=uid('ISS');
+    const ts=nowIso();
+    let logged=0;
+
+    selected.forEach(function(x){
+      const a=x.a,q=x.q;
+      const before=Number(a.stock||0);
+      const after=Math.max(0,before-q);
+      a.stock=after;
+
+      db.issueLog.unshift({
+        id:uid('L'),
+        tx:tx,
+        ts:ts,
+        userId:session.user.id,
+        userName:session.user.name,
+        cellId:a.cellId,
+        ppeId:a.ppeId,
+        ppeName:ppe(a.ppeId)?ppe(a.ppeId).name:a.ppeId,
+        before:before,
+        qty:q,
+        after:after,
+        status:'Подтверждено'
+      });
+      logged++;
+    });
+
+    // Сначала фиксируем выдачу в БД, затем создаём/обновляем задания склада.
+    saveDb();
+    syncTasks();
+    saveDb();
+
+    session.flow=null;
+    issueSelection={};
+
+    if(logged>0){
+      toast('Выдача зарегистрирована: '+logged+' поз.','ok');
+    }else{
+      toast('Ошибка: выдача не записана в журнал','error');
+    }
+    showOperator();
+  });
 };
 
 """;
