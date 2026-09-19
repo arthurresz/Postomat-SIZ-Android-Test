@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 16
-        versionName = "3.13-standard-classic-ui-back-root"
+        versionCode = 23
+        versionName = "3.23-standard-classic-ui-custom-icon"
     }
 
     buildTypes {
