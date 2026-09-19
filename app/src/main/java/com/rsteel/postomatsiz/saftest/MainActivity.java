@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.39-standard-classic-ui-operator-user-grid';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.40-standard-classic-ui-guided-operator-flow';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorGuidedFlowPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -2798,6 +2798,323 @@ showUserLogin=function(role,push=true){
     applyOperatorUserGrid();
     setTimeout(applyOperatorUserGrid,0);
   }
+};
+
+""";
+    }
+
+
+    private String operatorGuidedFlowPatchScript() {
+        return """
+
+// ===== v3.40 guided operator receiving flow =====
+function ensureOperatorFlowStyleV340(){
+  if(byId('operatorFlowStyleV340'))return;
+  const s=document.createElement('style');
+  s.id='operatorFlowStyleV340';
+  s.textContent=
+    '.operatorStepsV340{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 14px;}'
+    +'.operatorStepV340{background:#fff;border:1px solid var(--line);border-radius:13px;padding:10px 11px;min-height:60px;display:flex;gap:9px;align-items:center;}'
+    +'.operatorStepV340 .n{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e7edf4;color:#526176;font-weight:900;flex:0 0 auto;}'
+    +'.operatorStepV340 b{display:block;font-size:12px}.operatorStepV340 span{display:block;font-size:10px;color:var(--muted);margin-top:2px;}'
+    +'.operatorStepV340.active{border-color:#75a8da;background:#eef6ff}.operatorStepV340.active .n{background:var(--b);color:#fff;}'
+    +'.operatorStepV340.done{border-color:#a8d7c2;background:#f0faf5}.operatorStepV340.done .n{background:var(--g);color:#fff;}'
+    +'.operatorChosenTitleV340{font-size:14px;font-weight:900;margin:12px 0 7px;}'
+    +'.operatorChosenV340 .summaryLine{background:#f4f8fc;border:1px solid #dce6f0;border-radius:10px;padding:10px 11px;margin-bottom:7px;display:flex;justify-content:space-between;gap:10px;align-items:center;color:var(--ink);}'
+    +'.operatorChosenV340 .summaryLine b{font-size:18px;}'
+    +'.operatorLockedV340{display:none!important;}'
+    +'.operatorSelectedCardV340{border-color:#75a8da!important;box-shadow:0 0 0 2px rgba(18,99,182,.07);}'
+    +'.operatorTakeBannerV340{background:#eef6ff;border:1px solid #bcd4ec;border-radius:13px;padding:12px 13px;margin-bottom:10px;font-size:12px;line-height:1.45;color:#264d73;}'
+    +'@media(max-width:760px){.operatorStepsV340{grid-template-columns:repeat(2,minmax(0,1fr));}}';
+  document.head.appendChild(s);
+}
+
+function operatorFlowStageV340(stage){
+  const steps=document.querySelectorAll('.operatorStepV340');
+  steps.forEach(function(el){
+    const n=Number(el.dataset.step||0);
+    el.classList.remove('active','done');
+    if(n<stage)el.classList.add('done');
+    else if(n===stage)el.classList.add('active');
+  });
+}
+
+function selectedIssueCountV340(){
+  return Object.keys(issueSelection||{}).length;
+}
+
+function operatorSelectedHtmlV340(){
+  const lines=[];
+  Object.entries(issueSelection||{}).forEach(function(entry){
+    const a=db.assignments.find(function(x){return x.id===entry[0];});
+    if(!a)return;
+    const p=ppe(a.ppeId);
+    lines.push('<div class="summaryLine"><span>'+esc(p?p.name:a.ppeId)+'</span><b>'+Number(entry[1]||0)+'</b></div>');
+  });
+  return lines.join('')||'<div class="sub">Ничего не выбрано</div>';
+}
+
+function syncOperatorOpenButtonV340(){
+  const b=byId('openIssue');
+  if(!b)return;
+  const has=selectedIssueCountV340()>0;
+  if(!session.flow)b.disabled=!has;
+}
+
+function enhanceOperatorIssueV340(){
+  const open=byId('openIssue');
+  const confirm=byId('confirmIssue');
+  const summary=byId('issueSummary');
+  if(!open||!confirm||!summary)return;
+
+  ensureOperatorFlowStyleV340();
+
+  const h1=document.querySelector('.contentHead .h1');
+  if(h1)h1.textContent='Получение расходных материалов';
+
+  const layout=document.querySelector('.issueLayout');
+  if(layout&&!byId('operatorStepsV340')){
+    const steps=document.createElement('div');
+    steps.id='operatorStepsV340';
+    steps.className='operatorStepsV340';
+    steps.innerHTML=
+      '<div class="operatorStepV340 active" data-step="1"><div class="n">1</div><div><b>Выберите</b><span>Материалы и количество</span></div></div>'
+      +'<div class="operatorStepV340" data-step="2"><div class="n">2</div><div><b>Откройте</b><span>Нажмите кнопку открытия</span></div></div>'
+      +'<div class="operatorStepV340" data-step="3"><div class="n">3</div><div><b>Заберите</b><span>И закройте ячейку</span></div></div>'
+      +'<div class="operatorStepV340" data-step="4"><div class="n">4</div><div><b>Подтвердите</b><span>Получение материалов</span></div></div>';
+    layout.parentNode.insertBefore(steps,layout);
+  }
+
+  const summaryParent=summary.parentElement;
+  if(summaryParent){
+    const title=Array.from(summaryParent.querySelectorAll('.h2')).find(function(x){
+      return String(x.textContent||'').trim().toLowerCase()==='выбрано';
+    });
+    if(title)title.textContent='Выбрано к получению';
+  }
+  summary.classList.add('operatorChosenV340');
+
+  open.textContent='ОТКРЫТЬ ЯЧЕЙКУ';
+  confirm.textContent='ПОДТВЕРДИТЬ ПОЛУЧЕНИЕ';
+  confirm.disabled=true;
+
+  const hint=byId('flowHint');
+  if(hint)hint.textContent='1. Выберите расходные материалы и количество. После этого станет доступно открытие ячейки.';
+
+  document.querySelectorAll('.issueQty').forEach(function(inp){
+    const prev=inp.oninput;
+    inp.oninput=function(ev){
+      if(typeof prev==='function')prev.call(inp,ev);
+      else updateIssueSummary();
+      syncOperatorOpenButtonV340();
+      operatorFlowStageV340(selectedIssueCountV340()>0?2:1);
+    };
+  });
+
+  updateIssueSummary();
+  syncOperatorOpenButtonV340();
+  operatorFlowStageV340(selectedIssueCountV340()>0?2:1);
+}
+
+const __updateIssueSummaryV340=updateIssueSummary;
+updateIssueSummary=function(){
+  __updateIssueSummaryV340();
+  const summary=byId('issueSummary');
+  if(summary){
+    summary.innerHTML=operatorSelectedHtmlV340();
+    summary.classList.add('operatorChosenV340');
+  }
+  syncOperatorOpenButtonV340();
+};
+
+function lockOperatorSelectionV340(){
+  document.querySelectorAll('.ppeCard').forEach(function(card){
+    const inp=card.querySelector('.issueQty');
+    if(!inp)return;
+    const q=Math.max(0,Number(inp.value||0));
+    inp.disabled=true;
+    if(q>0)card.classList.add('operatorSelectedCardV340');
+    else card.classList.add('operatorLockedV340');
+  });
+
+  const cards=document.querySelector('.cards2');
+  if(cards&&!byId('operatorTakeBannerV340')){
+    const b=document.createElement('div');
+    b.id='operatorTakeBannerV340';
+    b.className='operatorTakeBannerV340';
+    b.innerHTML='<b>Заберите только выбранные позиции</b><br>Ниже оставлен только список расходных материалов, которые вы выбрали до открытия ячейки.';
+    cards.insertBefore(b,cards.firstChild);
+  }
+}
+
+startIssue=async function(){
+  updateIssueSummary();
+  if(!selectedIssueCountV340()){
+    toast('Сначала выберите расходные материалы и количество','error');
+    return;
+  }
+
+  const rows=operatorSelectedHtmlV340();
+  confirmModal(
+    'Открыть ячейку?',
+    '<div style="margin-bottom:8px">После открытия возьмите только выбранные позиции:</div>'+rows,
+    'ОТКРЫТЬ',
+    async function(){
+      try{
+        const open=byId('openIssue');
+        if(open)open.disabled=true;
+        lockOperatorSelectionV340();
+        operatorFlowStageV340(2);
+
+        const hint=byId('flowHint');
+        if(hint)hint.textContent='Команда открытия отправлена. Ожидаем открытия ячейки.';
+
+        session.flow={kind:'ISSUE',cellId:session.user.cellId,sawOpen:false,closed:false};
+        await apiOpen(session.user.cellId);
+        pollPhysicalFlow();
+      }catch(e){
+        session.flow=null;
+        toast('Ошибка открытия: '+e.message,'error');
+        showOperator();
+      }
+    }
+  );
+};
+
+pollPhysicalFlow=function(){
+  let tries=0;
+  const timer=setInterval(async function(){
+    if(!session.flow){clearInterval(timer);return;}
+    tries++;
+    try{
+      const c=await apiCell(session.flow.cellId);
+      const st=Number(c.state);
+      setCellState(st);
+
+      const routeState=byId('routeCellState');
+      if(routeState){
+        routeState.textContent=st===0?'ОТКРЫТА':'ЗАКРЫТА';
+        routeState.className='stateBig '+(st===0?'open':'closed');
+      }
+
+      if(st===0){
+        session.flow.sawOpen=true;
+        if(session.flow.kind==='ISSUE'){
+          operatorFlowStageV340(3);
+          const h=byId('flowHint');
+          if(h)h.textContent='Ячейка открыта. Возьмите выбранные расходные материалы из списка и закройте дверцу.';
+        }else{
+          const h=byId('routeHint');
+          if(h)h.textContent='Ячейка открыта. Выполните операцию и закройте дверцу.';
+        }
+      }
+
+      if(st===1&&session.flow.sawOpen){
+        session.flow.closed=true;
+        clearInterval(timer);
+
+        if(session.flow.kind==='ISSUE'){
+          operatorFlowStageV340(4);
+          const h=byId('flowHint');
+          if(h)h.textContent='Ячейка закрыта. Проверьте список и нажмите «Подтвердить получение».';
+          const b=byId('confirmIssue');
+          if(b)b.disabled=false;
+        }
+
+        if(session.flow.kind==='REPLENISH'){
+          const h=byId('routeHint');
+          if(h)h.textContent='Ячейка закрыта. Проверьте количество и подтвердите.';
+          const b=byId('confirmRoute');
+          if(b)b.disabled=false;
+        }
+      }
+
+      if(tries>70){
+        clearInterval(timer);
+        toast('Не удалось зафиксировать цикл открытия/закрытия','error');
+      }
+    }catch(e){
+      if(tries>5){
+        clearInterval(timer);
+        toast('Ошибка контроля двери: '+e.message,'error');
+      }
+    }
+  },700);
+};
+
+confirmIssue=function(){
+  if(!session.flow||!session.flow.closed){
+    toast('Сначала закройте ячейку','error');
+    return;
+  }
+
+  const selected=Object.entries(issueSelection)
+    .map(function(x){
+      const a=db.assignments.find(function(z){return z.id===x[0];});
+      return {a:a,q:Math.max(0,Number(x[1]||0))};
+    })
+    .filter(function(x){return x.a&&x.q>0;});
+
+  if(!selected.length){
+    toast('Нет выбранных расходных материалов','error');
+    return;
+  }
+
+  for(const x of selected){
+    if(x.q>Number(x.a.stock||0)){
+      toast('Остаток изменился. Обновите экран и повторите получение.','error');
+      return;
+    }
+  }
+
+  const rows=selected.map(function(x){
+    const p=ppe(x.a.ppeId);
+    return '<div class="summaryLine"><span>'+esc(p?p.name:x.a.ppeId)+'</span><b>'+x.q+'</b></div>';
+  }).join('');
+
+  confirmModal('Подтвердить получение?',rows,'ПОДТВЕРДИТЬ',function(){
+    const tx=uid('ISS');
+    const ts=nowIso();
+    let logged=0;
+
+    selected.forEach(function(x){
+      const a=x.a,q=x.q;
+      const before=Number(a.stock||0);
+      const after=Math.max(0,before-q);
+      a.stock=after;
+
+      db.issueLog.unshift({
+        id:uid('L'),
+        tx:tx,
+        ts:ts,
+        userId:session.user.id,
+        userName:session.user.name,
+        cellId:a.cellId,
+        ppeId:a.ppeId,
+        ppeName:ppe(a.ppeId)?ppe(a.ppeId).name:a.ppeId,
+        before:before,
+        qty:q,
+        after:after,
+        status:'Подтверждено'
+      });
+      logged++;
+    });
+
+    saveDb();
+    syncTasks();
+    saveDb();
+
+    session.flow=null;
+    issueSelection={};
+    toast(logged>0?'Получение зарегистрировано':'Ошибка: получение не записано','ok');
+    showOperator();
+  });
+};
+
+const __showOperatorV340=showOperator;
+showOperator=function(push=true){
+  __showOperatorV340(push);
+  enhanceOperatorIssueV340();
 };
 
 """;
