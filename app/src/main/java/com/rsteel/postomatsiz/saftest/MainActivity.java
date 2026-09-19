@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.23-standard-classic-ui-custom-icon';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.24-standard-classic-ui-manual-replenishment-report';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + page.substring(scriptEnd);
@@ -613,6 +613,95 @@ function showWarehouse(tab='replenish',push=true){
   }
 }
 
+// ===== v3.24 manual warehouse replenishment report =====
+function warehouseReplenishmentReport(){
+  ensureWarehouseData();
+  const groups=whQueueGroups();
+  const now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const stamp=pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear()+' '+pad(now.getHours())+':'+pad(now.getMinutes());
+
+  let totalPositions=0,totalQty=0;
+  const lines=[];
+  lines.push('ОТЧЁТ О ВОСПОЛНЕНИИ СИЗ');
+  lines.push('Сформирован: '+stamp);
+  lines.push('');
+
+  if(!groups.length){
+    lines.push('На момент формирования отчёта восполнение не требуется.');
+  }else{
+    groups.forEach((g,idx)=>{
+      const c=cell(g.cellId),o=ownerOfCell(g.cellId);
+      const cellName=c?.name||('Ячейка №'+g.cellId);
+      const owner=o?.name||'Сотрудник не назначен';
+      lines.push((idx+1)+'. '+cellName+' — '+owner);
+      g.tasks.forEach(t=>{
+        const a=t.a;
+        const need=Math.max(0,Number(a.target||0)-Number(a.stock||0));
+        const ppeName=ppe(t.ppeId)?.name||String(t.ppeId||'СИЗ');
+        totalPositions++;
+        totalQty+=need;
+        lines.push('   • '+ppeName+': сейчас '+a.stock+', целевой '+a.target+', добавить '+need);
+      });
+      lines.push('');
+    });
+    lines.push('ИТОГО');
+    lines.push('Ячеек: '+groups.length);
+    lines.push('Позиций СИЗ: '+totalPositions);
+    lines.push('Единиц к пополнению: '+totalQty);
+  }
+
+  return {
+    subject:'Постомат СИЗ — отчёт о восполнении — '+pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear(),
+    body:lines.join('\n'),
+    groups:groups.length,
+    positions:totalPositions,
+    qty:totalQty
+  };
+}
+
+function sendWarehouseReplenishmentReport(){
+  ensureWarehouseData();
+  const email=String(db.settings.warehouseReportEmail||'').trim();
+  if(!email){
+    toast('Email склада не настроен. Укажите его в Администрирование → Настройки.','error');
+    return false;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    toast('В настройках указан некорректный Email склада','error');
+    return false;
+  }
+  if(typeof NativeStore==='undefined'||typeof NativeStore.sendEmailText!=='function'){
+    toast('Отправка Email недоступна в этой сборке','error');
+    return false;
+  }
+
+  try{
+    const report=warehouseReplenishmentReport();
+    const result=String(NativeStore.sendEmailText(email,report.subject,report.body)||'');
+    if(result==='OK'){
+      toast('Отчёт подготовлен для отправки на '+email,'ok');
+      return true;
+    }
+    if(result==='NO_APP'){
+      toast('На планшете не найдено почтовое приложение','error');
+      return false;
+    }
+    toast('Не удалось открыть отправку отчёта'+(result?': '+result:''),'error');
+    return false;
+  }catch(e){
+    toast('Ошибка формирования отчёта: '+(e.message||e),'error');
+    return false;
+  }
+}
+
+const __wireWhReplenishV324=wireWhReplenish;
+wireWhReplenish=function(){
+  __wireWhReplenishV324();
+  const b=byId('whSendReplenishmentReport');
+  if(b)b.onclick=()=>sendWarehouseReplenishmentReport();
+};
+
 // ===== v3.9 warehouse report email setting =====
 const __adminSettingsV39=adminSettings;
 adminSettings=function(){
@@ -852,7 +941,7 @@ whQueueBody=function(){
     .whInfo{margin-bottom:14px}
     @media(max-width:520px){.whCards{grid-template-columns:1fr}.whStats{grid-template-columns:1fr}.whStat{padding:10px 12px}.whStat b{font-size:20px}}
   </style>
-  <div class="contentHead"><div><div class="h1">Восполнение</div><p>Выберите пользователя / ячейку. После выбора откроется список СИЗ и количество для пополнения.</p></div><div class="right"><button class="btn outline" id="whRefresh">Обновить</button></div></div>
+  <div class="contentHead"><div><div class="h1">Восполнение</div><p>Выберите пользователя / ячейку. После выбора откроется список СИЗ и количество для пополнения.</p></div><div class="right" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="whSendReplenishmentReport">ОТЧЁТ О ВОСПОЛНЕНИИ</button><button class="btn outline" id="whRefresh">Обновить</button></div></div>
   <div class="note whInfo"><b>Отчёт склада:</b> формируется из этой очереди. Расписание — <b>среда и пятница</b>.</div>
   <div class="whStats">
     <div class="whStat"><b>${groups.length}</b><span>Ячеек к восполнению</span></div>
@@ -1313,6 +1402,22 @@ window.appBack=function(){
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 if (send.resolveActivity(getPackageManager()) == null) return "NO_APP";
                 runOnUiThread(() -> startActivity(Intent.createChooser(send, "Отправить отчёт")));
+                return "OK";
+            } catch (Exception e) {
+                return "ERROR: " + e.getClass().getSimpleName();
+            }
+        }
+
+        @JavascriptInterface public String sendEmailText(String email, String subject, String body) {
+            try {
+                if (email == null || email.trim().isEmpty()) return "BAD_EMAIL";
+                Intent send = new Intent(Intent.ACTION_SENDTO);
+                send.setData(Uri.parse("mailto:" + email.trim()));
+                send.putExtra(Intent.EXTRA_EMAIL, new String[]{email.trim()});
+                send.putExtra(Intent.EXTRA_SUBJECT, subject == null ? "" : subject);
+                send.putExtra(Intent.EXTRA_TEXT, body == null ? "" : body);
+                if (send.resolveActivity(getPackageManager()) == null) return "NO_APP";
+                runOnUiThread(() -> startActivity(Intent.createChooser(send, "Отправить отчёт о восполнении")));
                 return "OK";
             } catch (Exception e) {
                 return "ERROR: " + e.getClass().getSimpleName();
