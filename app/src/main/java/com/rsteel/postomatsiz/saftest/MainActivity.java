@@ -653,7 +653,7 @@ function warehouseReplenishmentReport(){
 
   return {
     subject:'Постомат СИЗ — отчёт о восполнении — '+pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear(),
-    body:lines.join('\n'),
+    body:lines.join('\\n'),
     groups:groups.length,
     positions:totalPositions,
     qty:totalQty
@@ -667,7 +667,7 @@ function sendWarehouseReplenishmentReport(){
     toast('Email склада не настроен. Укажите его в Администрирование → Настройки.','error');
     return false;
   }
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
     toast('В настройках указан некорректный Email склада','error');
     return false;
   }
