@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.40-standard-classic-ui-guided-operator-flow';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.41-standard-classic-ui-user-grid-fix';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorGuidedFlowPatchScript() + page.substring(scriptEnd);
@@ -2692,117 +2692,50 @@ showWarehouse=function(tab='replenish',push=true){
     private String operatorUserGridPatchScript() {
         return """
 
-// ===== v3.39 compact employee grid for operator login =====
-function operatorLoginEmployeeNames(){
-  return (db.employees||[])
-    .filter(function(e){
-      return e&&e.active&&e.id!=='WH'&&(!e.role||e.role==='OPERATOR');
-    })
-    .map(function(e){return String(e.name||'').trim();})
-    .filter(Boolean)
-    .sort(function(a,b){return a.localeCompare(b,'ru');});
-}
-
-function smallestCommonAncestor(nodes){
-  if(!nodes||!nodes.length)return null;
-  let cur=nodes[0].parentElement;
-  while(cur){
-    if(nodes.every(function(n){return cur.contains(n);})){return cur;}
-    cur=cur.parentElement;
-  }
-  return null;
-}
-
+// ===== v3.41 stable compact employee grid for operator login =====
 function applyOperatorUserGrid(){
-  const names=operatorLoginEmployeeNames();
-  if(!names.length)return;
+  const grid=document.querySelector('.userGrid');
+  if(!grid)return;
 
-  const allButtons=Array.from(document.querySelectorAll('button'));
-  const used=new Set();
-  const pairs=[];
-
-  names.forEach(function(name){
-    const btn=allButtons.find(function(b){
-      if(used.has(b))return false;
-      const txt=String(b.textContent||'').replace(/\s+/g,' ').trim();
-      return txt===name||txt.indexOf(name)>=0;
-    });
-    if(btn){
-      used.add(btn);
-      pairs.push({name:name,button:btn});
-    }
-  });
-
-  if(!pairs.length)return;
-
-  const originalButtons=pairs.map(function(x){return x.button;});
-  let host=smallestCommonAncestor(originalButtons);
-
-  // Не прячем весь loginbox, если список пользователей не имеет отдельного контейнера.
-  if(!host||host===document.body||host.id==='app'||host.classList.contains('loginbox')){
-    host=originalButtons[0].parentElement;
-  }
-
-  if(!host)return;
-
-  let style=byId('operatorUserGridStyleV339');
+  let style=byId('operatorUserGridStyleV341');
   if(!style){
     style=document.createElement('style');
-    style.id='operatorUserGridStyleV339';
+    style.id='operatorUserGridStyleV341';
     style.textContent=
-      '.operatorUserGridV339{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 6px;}'
-      +'.operatorUserCardV339{position:relative;width:100%;aspect-ratio:1/1;min-height:108px;border:1px solid #d8e0e9;border-radius:15px;background:#fff;color:#1c2a3a;padding:12px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;font-weight:800;line-height:1.25;box-shadow:0 3px 10px rgba(20,45,80,.04);cursor:pointer;-webkit-tap-highlight-color:transparent;}'
-      +'.operatorUserCardV339:active{transform:scale(.98);background:#eef5ff;border-color:#9fbfe3;}'
-      +'.operatorUserCardV339 span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}'
-      +'.operatorUserGridHintV339{font-size:12px;color:#6b7788;margin:2px 0 8px;}'
-      +'@media(max-width:760px){.operatorUserGridV339{grid-template-columns:repeat(3,minmax(0,1fr));}.operatorUserCardV339{min-height:96px;font-size:13px;}}'
-      +'@media(max-width:500px){.operatorUserGridV339{grid-template-columns:repeat(2,minmax(0,1fr));}.operatorUserCardV339{min-height:92px;}}';
+      '.userGrid.operatorUserGridV341{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important;margin:14px 0 10px!important;}'
+      +'.userGrid.operatorUserGridV341 .userCard{display:flex!important;width:100%!important;aspect-ratio:1/1!important;min-height:105px!important;margin:0!important;padding:12px!important;border:1px solid #d8e0e9!important;border-radius:15px!important;background:#fff!important;color:#1c2a3a!important;align-items:center!important;justify-content:center!important;text-align:center!important;box-shadow:0 3px 10px rgba(20,45,80,.04)!important;overflow:hidden!important;}'
+      +'.userGrid.operatorUserGridV341 .userCard b{font-size:14px!important;line-height:1.25!important;display:-webkit-box!important;-webkit-line-clamp:3!important;-webkit-box-orient:vertical!important;overflow:hidden!important;word-break:break-word!important;}'
+      +'.userGrid.operatorUserGridV341 .userCard span{display:none!important;}'
+      +'.userGrid.operatorUserGridV341 .userCard.selected{border-color:#1263b6!important;background:#eef6ff!important;box-shadow:0 0 0 2px rgba(18,99,182,.10)!important;}'
+      +'.userGrid.operatorUserGridV341 .userCard:active{transform:scale(.98)!important;}'
+      +'@media(max-width:760px){.userGrid.operatorUserGridV341{grid-template-columns:repeat(3,minmax(0,1fr))!important}.userGrid.operatorUserGridV341 .userCard{min-height:96px!important}.userGrid.operatorUserGridV341 .userCard b{font-size:13px!important}}'
+      +'@media(max-width:500px){.userGrid.operatorUserGridV341{grid-template-columns:repeat(2,minmax(0,1fr))!important}.userGrid.operatorUserGridV341 .userCard{min-height:92px!important}}';
     document.head.appendChild(style);
   }
 
-  // Сохраняем исходные кнопки невидимыми: их onclick содержит штатную логику перехода к PIN.
-  originalButtons.forEach(function(b){
-    b.style.display='none';
-    const p=b.parentElement;
-    if(p&&p!==host&&p.children.length===1)p.style.display='none';
+  // На случай обновления с v3.39/v3.40 убираем старую динамическую сетку,
+  // а штатные карточки обязательно возвращаем.
+  const oldGrid=byId('operatorUserGridV339');
+  if(oldGrid)oldGrid.remove();
+  document.querySelectorAll('.operatorUserGridHintV339').forEach(function(x){x.remove();});
+
+  grid.classList.add('operatorUserGridV341');
+  grid.style.display='grid';
+
+  Array.from(grid.querySelectorAll('.userCard')).forEach(function(card){
+    card.style.display='flex';
+    if(card.parentElement&&card.parentElement!==grid)card.parentElement.style.display='';
   });
-
-  const old=byId('operatorUserGridV339');
-  if(old)old.remove();
-
-  const grid=document.createElement('div');
-  grid.id='operatorUserGridV339';
-  grid.className='operatorUserGridV339';
-
-  pairs.sort(function(a,b){return a.name.localeCompare(b.name,'ru');}).forEach(function(pair){
-    const card=document.createElement('button');
-    card.type='button';
-    card.className='operatorUserCardV339';
-    card.innerHTML='<span>'+esc(pair.name)+'</span>';
-    card.onclick=function(){pair.button.click();};
-    grid.appendChild(card);
-  });
-
-  const hint=document.createElement('div');
-  hint.className='operatorUserGridHintV339';
-  hint.textContent='Выберите сотрудника для ввода PIN';
-
-  host.parentNode.insertBefore(hint,host);
-  host.parentNode.insertBefore(grid,host);
 }
 
-const __showUserLoginV339=showUserLogin;
+const __showUserLoginV341=showUserLogin;
 showUserLogin=function(role,push=true){
-  __showUserLoginV339(role,push);
-  if(role==='OPERATOR'){
-    applyOperatorUserGrid();
-    setTimeout(applyOperatorUserGrid,0);
-  }
+  __showUserLoginV341(role,push);
+  if(role==='OPERATOR')applyOperatorUserGrid();
 };
 
 """;
     }
-
 
     private String operatorGuidedFlowPatchScript() {
         return """
