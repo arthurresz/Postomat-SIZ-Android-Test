@@ -2402,7 +2402,7 @@ confirmIssue=function(){
 // ===== v3.37 initial structure: 20 cells + employee catalog =====
 (function seedInitialCatalogV337(){
   try{
-    if(!window.db)return;
+    if(typeof db==='undefined'||!db)return;
     db.settings=db.settings||{};
     if(db.settings.initialCatalogV337)return;
 
