@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 32
-        versionName = "3.32-standard-classic-ui-simple-issue-reports"
+        versionCode = 33
+        versionName = "3.33-standard-classic-ui-issue-remaining"
     }
 
     buildTypes {
