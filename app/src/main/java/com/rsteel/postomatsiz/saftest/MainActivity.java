@@ -3106,7 +3106,7 @@ confirmIssue=function(){
 
     session.flow=null;
     issueSelection={};
-    toast(logged>0?'Получение зарегистрировано':'Ошибка: получение не записано','ok');
+    toast(logged>0?'Получение зарегистрировано':'Ошибка: получение не записано',logged>0?'ok':'error');
     showOperator();
   });
 };
