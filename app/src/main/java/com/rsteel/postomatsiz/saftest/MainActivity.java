@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.34-standard-classic-ui-issue-log-fix';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.35-standard-classic-ui-warehouse-issued-reports';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + page.substring(scriptEnd);
@@ -202,8 +202,8 @@ adminReports=function(){
   `<div class="betaBar">● ДЕМО-РЕЖИМ: реальные ячейки не открываются. Отчёты и backup сохраняются физически через штатную папку Android.</div>
   <div class="reportGrid">
    <div class="reportCard"><h3>Папка хранения</h3><p>Один раз выберите <b>Documents</b> или существующую папку <b>Postomat_SIZ</b>. Приложение будет использовать подпапки Reports и Backup.</p><div class="reportStatus ${nativeStorageAvailable()?'ok':'internal'}" style="margin-top:12px">${esc(nativeStorageLabel())}</div><button id="chooseStorageRoot" class="btn outline block" style="margin-top:12px">ВЫБРАТЬ ПАПКУ ХРАНЕНИЯ</button></div>
-   <div class="reportCard"><h3>Еженедельный отчёт</h3><p>Журнал фактических выдач СИЗ за выбранную неделю.</p><div class="field" style="margin-top:12px"><label>Неделя</label><select id="reportWeek" class="select">${weekOptions}</select></div><div style="display:grid;gap:8px"><button id="previewWeekReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeWeekReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="weeklyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendWeekReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ НА EMAIL</button></div>
-   <div class="reportCard"><h3>Ежемесячный отчёт</h3><p>Журнал фактических выдач СИЗ за выбранный месяц.</p><div class="field" style="margin-top:12px"><label>Месяц</label><select id="reportMonth" class="select">${monthOptions}</select></div><div style="display:grid;gap:8px"><button id="previewMonthReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="monthlyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendMonthReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ НА EMAIL</button></div>
+   <div class="reportCard"><h3>Еженедельный отчёт</h3><p>Журнал выдач СИЗ складом в ячейки сотрудников за выбранную неделю.</p><div class="field" style="margin-top:12px"><label>Неделя</label><select id="reportWeek" class="select">${weekOptions}</select></div><div style="display:grid;gap:8px"><button id="previewWeekReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeWeekReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="weeklyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendWeekReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ НА EMAIL</button></div>
+   <div class="reportCard"><h3>Ежемесячный отчёт</h3><p>Журнал выдач СИЗ складом в ячейки сотрудников за выбранный месяц.</p><div class="field" style="margin-top:12px"><label>Месяц</label><select id="reportMonth" class="select">${monthOptions}</select></div><div style="display:grid;gap:8px"><button id="previewMonthReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="monthlyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendMonthReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ НА EMAIL</button></div>
    <div class="reportCard"><h3>Резервные копии</h3><p>Backup сохраняется физическим файлом в выбранную папку <b>Postomat_SIZ/Backup</b>.</p><div class="reportStatus ${lastBackup&&lastBackup.storage==='DEVICE_FILE'?'ok':'internal'}">Последний: ${last}${lastBackupPath}</div><button id="backupNow" class="btn green block" style="margin-top:12px">СОЗДАТЬ BACKUP В ПАМЯТИ ПЛАНШЕТА</button><div class="fieldRow" style="margin-top:12px"><div class="field"><label>Backup каждые, дней</label><input id="backupDays" class="input" data-vk="number" value="${db.settings.backupEveryDays||7}"></div><div class="field"><label>Хранить недель</label><input id="backupWeeks" class="input" data-vk="number" value="${db.settings.backupRetentionWeeks||12}"></div></div><div class="field"><label>Хранить месячные отчёты, месяцев</label><input id="reportMonthsKeep" class="input" data-vk="number" value="${db.settings.reportRetentionMonths||12}"></div><button id="saveArchiveSettings" class="btn outline block">СОХРАНИТЬ НАСТРОЙКИ</button></div>
   </div>
   <div class="sectionLabel">Архив сформированных отчётов</div>${reports||'<div class="empty">Архив пока пуст. Выберите период и нажмите «Сформировать в архив».</div>'}
@@ -2131,7 +2131,7 @@ function simpleIssueReportTitle(type){
 function simpleIssueRows(type,key){
   const d=calcReportData(type,key);
   const p=periodData(type,key);
-  const source=Array.isArray(db.issueLog)?db.issueLog:[];
+  const source=Array.isArray(db.replenishLog)?db.replenishLog:[];
   const rows=source.filter(function(x){
     const raw=x.ts||x.createdAt||x.dateTime||x.date;
     if(!raw)return false;
@@ -2144,17 +2144,17 @@ function simpleIssueRows(type,key){
     const dt=new Date(raw);
     const cid=x.cellId!=null?x.cellId:'—';
     const cellName=(cell(cid)&&cell(cid).name)?cell(cid).name:(cid==='—'?'—':'№'+cid);
-    const qty=Number(x.qty!=null?x.qty:(x.issued!=null?x.issued:x.count)||0);
-    const before=Number(x.before!=null?x.before:0);
-    const remain=Number(x.after!=null?x.after:Math.max(0,before-qty));
+    const qty=Number(x.qty!=null?x.qty:(x.issued!=null?x.issued:x.added)||0);
+    const after=Number(x.after!=null?x.after:(x.stockAfter!=null?x.stockAfter:0));
+    const owner=ownerOfCell&&cid!=='—'?ownerOfCell(cid):null;
     return {
       date:reportFmtDate(dt),
       time:pad2(dt.getHours())+':'+pad2(dt.getMinutes()),
       cell:cellName,
       ppe:x.ppeName||x.nomenclature||x.ppeId||'—',
-      employee:x.userName||x.employeeName||x.recipientName||x.userId||'—',
+      employee:x.recipientName||x.employeeName||(owner&&owner.name)||'—',
       qty:qty,
-      remain:remain
+      remain:after
     };
   });
   return {d:d,rows:rows};
