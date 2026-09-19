@@ -8,25 +8,48 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.GZIPInputStream;
 
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+
+import org.json.JSONObject;
+
 public class MainActivity extends Activity {
     private static final int REQ_TREE = 2001;
     private static final String PREFS = "postomat_siz_native";
     private static final String PREF_TREE_URI = "tree_uri";
+    private static final String PREF_SMTP_EMAIL = "smtp_sender_email";
+    private static final String PREF_SMTP_IV = "smtp_password_iv";
+    private static final String PREF_SMTP_SECRET = "smtp_password_secret";
+    private static final String SMTP_KEY_ALIAS = "postomat_siz_smtp_key";
+    private static final String SMTP_HOST = "smtp.mail.ru";
+    private static final int SMTP_PORT = 465;
     private WebView webView;
     private SharedPreferences prefs;
 
@@ -92,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.24-standard-classic-ui-manual-replenishment-report';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.25-standard-classic-ui-background-mail';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -1272,6 +1295,177 @@ wireWhReplenish=function(){
 """;
     }
 
+
+    private String smtpMailPatchScript() {
+        return """
+
+// ===== v3.25 Mail.ru SMTP background mail =====
+function smtpConfigured(){
+  try{return typeof NativeStore!=='undefined'&&typeof NativeStore.isSmtpConfigured==='function'&&NativeStore.isSmtpConfigured()}catch(e){return false}
+}
+function smtpSenderEmail(){
+  try{return typeof NativeStore!=='undefined'&&typeof NativeStore.getSmtpSenderEmail==='function'?String(NativeStore.getSmtpSenderEmail()||''):''}catch(e){return ''}
+}
+function smtpEmailOk(v){
+  v=String(v||'').trim();
+  return v.indexOf('@')>0&&v.lastIndexOf('.')>v.indexOf('@')+1;
+}
+window.onNativeMailResult=function(contextId,ok,message){
+  try{
+    if(ok)toast(String(message||'Письмо отправлено'),'ok');
+    else toast(String(message||'Не удалось отправить письмо'),'error');
+  }catch(e){console.error('mail result',e)}
+};
+
+const __adminSettingsV325=adminSettings;
+adminSettings=function(){
+  const base=__adminSettingsV325();
+  const configured=smtpConfigured();
+  const sender=smtpSenderEmail();
+  let h='';
+  h+='<div class="sectionLabel">Почта для отправки отчётов</div>';
+  h+='<div class="card" style="max-width:760px">';
+  h+='<div class="h2" style="font-size:18px">Техническая почта Mail.ru</div>';
+  h+='<div class="sub" style="margin-bottom:12px">Отчёты отправляются напрямую через smtp.mail.ru:465 (SSL) в фоне. Почтовый клиент на планшете не используется.</div>';
+  h+='<div class="reportStatus '+(configured?'ok':'internal')+'" style="margin-bottom:12px">'+(configured?'SMTP настроен • '+esc(sender):'SMTP ещё не настроен')+'</div>';
+  h+='<div class="field"><label>Email отправителя Mail.ru</label><input id="smtpSenderEmail" class="input" data-vk="latin" inputmode="email" autocomplete="off" autocapitalize="none" value="'+esc(sender)+'"></div>';
+  h+='<div class="field"><label>Пароль для внешнего приложения Mail.ru</label><input id="smtpAppPassword" class="input" type="password" data-vk="latin" autocomplete="new-password" autocapitalize="none" value="" placeholder="'+(configured?'Сохранён. Для замены введите новый пароль':'Введите пароль приложения')+'"></div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="saveSmtpSettings" class="btn primary">СОХРАНИТЬ ПОЧТУ</button>';
+  if(configured)h+='<button id="clearSmtpSettings" class="btn outline">УДАЛИТЬ НАСТРОЙКИ ПОЧТЫ</button>';
+  h+='</div>';
+  h+='<div class="sectionLabel" style="margin-top:18px">Тестовая отправка</div>';
+  h+='<div class="sub" style="margin-bottom:10px">Введите любой адрес. Приложение отправит на него тестовое письмо без открытия почтового клиента.</div>';
+  h+='<div class="field"><label>Тестовый адрес получателя</label><input id="smtpTestRecipient" class="input" data-vk="latin" inputmode="email" autocomplete="off" autocapitalize="none" value=""></div>';
+  h+='<button id="sendSmtpTest" class="btn green">ОТПРАВИТЬ ТЕСТОВОЕ ПИСЬМО</button>';
+  h+='</div>';
+  return base+h;
+};
+
+const __wireAdminV325=wireAdmin;
+wireAdmin=function(tab){
+  __wireAdminV325(tab);
+  if(tab==='settings'){
+    const save=byId('saveSmtpSettings');
+    if(save)save.onclick=function(){
+      const email=String(byId('smtpSenderEmail')?byId('smtpSenderEmail').value:'').trim();
+      const pass=String(byId('smtpAppPassword')?byId('smtpAppPassword').value:'');
+      const current=smtpSenderEmail();
+      if(!smtpEmailOk(email)){toast('Введите корректный Email отправителя','error');return}
+      if(!pass){
+        if(smtpConfigured()&&email===current){toast('Настройки почты уже сохранены','ok');return}
+        toast('Введите пароль для внешнего приложения Mail.ru','error');return;
+      }
+      try{
+        const ok=NativeStore.saveSmtpCredentials(email,pass);
+        if(!ok){toast('Не удалось сохранить настройки SMTP','error');return}
+        if(byId('smtpAppPassword'))byId('smtpAppPassword').value='';
+        toast('Настройки Mail.ru сохранены в защищённом хранилище планшета','ok');
+        showAdmin('settings');
+      }catch(e){toast('Ошибка сохранения почты: '+(e.message||e),'error')}
+    };
+
+    const clear=byId('clearSmtpSettings');
+    if(clear)clear.onclick=function(){
+      confirmModal('Удалить настройки почты?','Технический Email и сохранённый пароль приложения будут удалены с планшета.','УДАЛИТЬ',function(){
+        try{NativeStore.clearSmtpCredentials();toast('Настройки почты удалены','ok');showAdmin('settings')}catch(e){toast('Не удалось удалить настройки','error')}
+      });
+    };
+
+    const test=byId('sendSmtpTest');
+    if(test)test.onclick=function(){
+      const to=String(byId('smtpTestRecipient')?byId('smtpTestRecipient').value:'').trim();
+      if(!smtpEmailOk(to)){toast('Введите корректный тестовый Email','error');return}
+      if(!smtpConfigured()){toast('Сначала сохраните техническую почту Mail.ru','error');return}
+      const stamp=new Date().toLocaleString('ru-RU');
+      const body='Тестовое письмо из приложения «Постомат СИЗ».\\n\\nВремя проверки: '+stamp+'\\nЕсли это письмо получено, фоновая SMTP-отправка работает.';
+      const result=String(NativeStore.smtpSendText(to,'Постомат СИЗ — тест отправки',body,'test')||'');
+      if(result==='QUEUED')toast('Тестовое письмо отправляется в фоне…','ok');
+      else if(result==='NOT_CONFIGURED')toast('SMTP не настроен','error');
+      else toast('Не удалось запустить тестовую отправку: '+result,'error');
+    };
+    enableNativeMobileKeyboard(document);
+  }
+};
+
+function smtpQueueAttachment(bytes,fileName,to,subject,body,contextId){
+  if(!smtpConfigured()){toast('Сначала настройте техническую почту в Администрирование → Настройки','error');return false}
+  if(!smtpEmailOk(to)){toast('Введите корректный Email получателя','error');return false}
+  try{
+    const result=String(NativeStore.smtpSendBase64Attachment(bytesToBase64(bytes),fileName,to,subject,body,contextId)||'');
+    if(result==='QUEUED'){toast('Отчёт сформирован. Письмо отправляется в фоне…','ok');return true}
+    if(result==='NOT_CONFIGURED'){toast('SMTP не настроен','error');return false}
+    toast('Не удалось запустить отправку: '+result,'error');return false;
+  }catch(e){toast('Ошибка отправки: '+(e.message||e),'error');return false}
+}
+
+sendReportByEmail=function(type,key,email){
+  email=String(email||'').trim();
+  if(!smtpEmailOk(email)){toast('Введите корректный Email','error');return false}
+  try{
+    const rec=saveReport(type,key,false);
+    const bytes=buildOneSheetXlsx(type,key);
+    const subject=(type==='weekly'?'Еженедельный':'Ежемесячный')+' отчёт СИЗ — '+(rec.label||key);
+    const body='Отчёт сформирован приложением «Постомат СИЗ». XLSX-файл приложен к письму.';
+    return smtpQueueAttachment(bytes,rec.fileName,email,subject,body,type+':'+key);
+  }catch(e){toast('Ошибка формирования отчёта: '+(e.message||e),'error');return false}
+};
+
+function buildWarehouseReplenishmentXlsx(){
+  const groups=whQueueGroups(),rows=[];
+  const now=new Date(),stamp=now.toLocaleString('ru-RU');
+  rows.push(['ОТЧЁТ О ВОСПОЛНЕНИИ СИЗ','','','','','','','','']);
+  rows.push(['Сформирован',stamp,'','','','','','','']);
+  rows.push(['Ячейка','Сотрудник','СИЗ','Сейчас','Min','Max','Добавить','Статус','Дата']);
+  let qty=0,positions=0;
+  groups.forEach(function(g){
+    const c=cell(g.cellId),o=ownerOfCell(g.cellId);
+    g.tasks.forEach(function(t){
+      const a=t.a,need=Math.max(0,Number(a.target||0)-Number(a.stock||0));
+      qty+=need;positions++;
+      rows.push([c?c.name:'Ячейка №'+g.cellId,o?o.name:'Сотрудник не назначен',ppe(t.ppeId)?ppe(t.ppeId).name:String(t.ppeId||'СИЗ'),Number(a.stock||0),Number(a.min||0),Number(a.target||0),need,a.stock===0?'КРИТИЧНО':'ПОПОЛНИТЬ',stamp]);
+    });
+  });
+  if(!groups.length)rows.push(['Восполнение не требуется','','','','','','','','']);
+  rows.push(['ИТОГО','Ячеек: '+groups.length,'Позиций: '+positions,'Единиц добавить: '+qty,'','','','','']);
+
+  let rr='';
+  rows.forEach(function(row,ri){
+    let cc='';
+    for(let ci=0;ci<9;ci++)cc+=cellXml(row[ci],colName(ci+1)+(ri+1),0);
+    rr+='<row r="'+(ri+1)+'">'+cc+'</row>';
+  });
+
+  const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="3" width="28" customWidth="1"/><col min="4" max="7" width="12" customWidth="1"/><col min="8" max="9" width="20" customWidth="1"/></cols><sheetData>'+rr+'</sheetData></worksheet>';
+  const ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
+  const rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  const wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Восполнение" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  const wbr='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="10"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>';
+  return zipStore([{name:'[Content_Types].xml',text:ct},{name:'_rels/.rels',text:rels},{name:'xl/workbook.xml',text:wb},{name:'xl/_rels/workbook.xml.rels',text:wbr},{name:'xl/styles.xml',text:styles},{name:'xl/worksheets/sheet1.xml',text:sheet}]);
+}
+
+sendWarehouseReplenishmentReport=function(){
+  ensureWarehouseData();
+  const email=String(db.settings.warehouseReportEmail||'').trim();
+  if(!email){toast('Email склада не настроен. Укажите его в Администрирование → Настройки.','error');return false}
+  if(!smtpEmailOk(email)){toast('В настройках указан некорректный Email склада','error');return false}
+  try{
+    const bytes=buildWarehouseReplenishmentXlsx();
+    const d=new Date(),pad=function(n){return String(n).padStart(2,'0')};
+    const fileName='Otchet_vospolnenie_'+d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'_'+pad(d.getHours())+pad(d.getMinutes())+'.xlsx';
+    if(nativeStorageAvailable()){try{nativeSaveBytes('Reports/'+fileName,bytes)}catch(e){}}
+    const groups=whQueueGroups();
+    const totalPositions=groups.reduce(function(s,g){return s+g.tasks.length},0);
+    const totalQty=groups.reduce(function(s,g){return s+g.tasks.reduce(function(x,t){return x+Math.max(0,t.a.target-t.a.stock)},0)},0);
+    const subject='Постомат СИЗ — отчёт о восполнении — '+pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear();
+    const body='Актуальный отчёт о восполнении СИЗ.\\nЯчеек: '+groups.length+'\\nПозиций: '+totalPositions+'\\nЕдиниц добавить: '+totalQty+'\\n\\nПодробный XLSX-файл приложен к письму.';
+    return smtpQueueAttachment(bytes,fileName,email,subject,body,'warehouse');
+  }catch(e){toast('Ошибка формирования отчёта: '+(e.message||e),'error');return false}
+};
+
+""";
+    }
+
     private String escapeHtml(String x) {
         return x == null ? "" : x.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
@@ -1368,7 +1562,230 @@ wireWhReplenish=function(){
         return u;
     }
 
+
+    private SecretKey smtpKey() throws Exception {
+        KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+        ks.load(null);
+        java.security.Key key = ks.getKey(SMTP_KEY_ALIAS, null);
+        if (key instanceof SecretKey) return (SecretKey) key;
+        KeyGenerator gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        gen.init(new KeyGenParameterSpec.Builder(
+                SMTP_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build());
+        return gen.generateKey();
+    }
+
+    private boolean storeSmtpCredentials(String email, String password) {
+        try {
+            email = email == null ? "" : email.trim();
+            if (email.isEmpty() || !email.contains("@") || password == null || password.isEmpty()) return false;
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, smtpKey());
+            byte[] encrypted = cipher.doFinal(password.getBytes(StandardCharsets.UTF_8));
+            prefs.edit()
+                    .putString(PREF_SMTP_EMAIL, email)
+                    .putString(PREF_SMTP_IV, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+                    .putString(PREF_SMTP_SECRET, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                    .apply();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String loadSmtpPassword() throws Exception {
+        String iv64 = prefs.getString(PREF_SMTP_IV, "");
+        String sec64 = prefs.getString(PREF_SMTP_SECRET, "");
+        if (iv64 == null || iv64.isEmpty() || sec64 == null || sec64.isEmpty()) return "";
+        byte[] iv = Base64.decode(iv64, Base64.NO_WRAP);
+        byte[] enc = Base64.decode(sec64, Base64.NO_WRAP);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, smtpKey(), new GCMParameterSpec(128, iv));
+        return new String(cipher.doFinal(enc), StandardCharsets.UTF_8);
+    }
+
+    private boolean smtpReady() {
+        String email = prefs.getString(PREF_SMTP_EMAIL, "");
+        String iv = prefs.getString(PREF_SMTP_IV, "");
+        String secret = prefs.getString(PREF_SMTP_SECRET, "");
+        return email != null && !email.trim().isEmpty()
+                && iv != null && !iv.isEmpty()
+                && secret != null && !secret.isEmpty();
+    }
+
+    private void clearSmtp() {
+        prefs.edit().remove(PREF_SMTP_EMAIL).remove(PREF_SMTP_IV).remove(PREF_SMTP_SECRET).apply();
+    }
+
+    private String smtpReadResponse(BufferedReader in) throws Exception {
+        String line = in.readLine();
+        if (line == null || line.length() < 3) throw new IllegalStateException("SMTP: нет ответа сервера");
+        StringBuilder all = new StringBuilder(line);
+        String code = line.substring(0, 3);
+        while (line.length() > 3 && line.charAt(3) == '-') {
+            line = in.readLine();
+            if (line == null) break;
+            all.append("\n").append(line);
+            if (line.startsWith(code + " ")) break;
+        }
+        return all.toString();
+    }
+
+    private int smtpCode(String response) {
+        try { return Integer.parseInt(response.substring(0, 3)); }
+        catch (Exception e) { return -1; }
+    }
+
+    private void smtpExpect(BufferedReader in, int... allowed) throws Exception {
+        String response = smtpReadResponse(in);
+        int code = smtpCode(response);
+        for (int a : allowed) if (code == a) return;
+        throw new IllegalStateException(response.replace('\n', ' '));
+    }
+
+    private void smtpCommand(BufferedWriter out, BufferedReader in, String command, int... allowed) throws Exception {
+        out.write(command);
+        out.write("\r\n");
+        out.flush();
+        smtpExpect(in, allowed);
+    }
+
+    private String mimeWord(String value) {
+        String v = value == null ? "" : value;
+        return "=?UTF-8?B?" + java.util.Base64.getEncoder()
+                .encodeToString(v.getBytes(StandardCharsets.UTF_8)) + "?=";
+    }
+
+    private String safeHeader(String value) {
+        return value == null ? "" : value.replace("\r", " ").replace("\n", " ").trim();
+    }
+
+    private String mimeBase64(byte[] bytes) {
+        return java.util.Base64.getMimeEncoder(76, "\r\n".getBytes(StandardCharsets.US_ASCII))
+                .encodeToString(bytes == null ? new byte[0] : bytes);
+    }
+
+    private void smtpSend(String recipient, String subject, String body,
+                          byte[] attachment, String attachmentName) throws Exception {
+        if (!smtpReady()) throw new IllegalStateException("SMTP не настроен");
+        String sender = prefs.getString(PREF_SMTP_EMAIL, "").trim();
+        String password = loadSmtpPassword();
+        recipient = safeHeader(recipient);
+        if (recipient.isEmpty() || !recipient.contains("@")) throw new IllegalArgumentException("Некорректный Email получателя");
+
+        SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+        try (SSLSocket socket = (SSLSocket) factory.createSocket(SMTP_HOST, SMTP_PORT);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
+             BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.US_ASCII))) {
+            socket.setSoTimeout(45000);
+            socket.startHandshake();
+            smtpExpect(in, 220);
+            smtpCommand(out, in, "EHLO postomat-siz.local", 250);
+            smtpCommand(out, in, "AUTH LOGIN", 334);
+            smtpCommand(out, in, java.util.Base64.getEncoder().encodeToString(sender.getBytes(StandardCharsets.UTF_8)), 334);
+            smtpCommand(out, in, java.util.Base64.getEncoder().encodeToString(password.getBytes(StandardCharsets.UTF_8)), 235);
+            smtpCommand(out, in, "MAIL FROM:<" + sender + ">", 250);
+            smtpCommand(out, in, "RCPT TO:<" + recipient + ">", 250, 251);
+            smtpCommand(out, in, "DATA", 354);
+
+            StringBuilder msg = new StringBuilder();
+            msg.append("From: <").append(sender).append(">\r\n");
+            msg.append("To: <").append(recipient).append(">\r\n");
+            msg.append("Subject: ").append(mimeWord(safeHeader(subject))).append("\r\n");
+            msg.append("MIME-Version: 1.0\r\n");
+
+            if (attachment != null && attachment.length > 0) {
+                String boundary = "----PostomatSIZ" + System.currentTimeMillis();
+                String encodedName = mimeWord(safeHeader(attachmentName == null ? "report.xlsx" : attachmentName));
+                msg.append("Content-Type: multipart/mixed; boundary=\"").append(boundary).append("\"\r\n\r\n");
+                msg.append("--").append(boundary).append("\r\n");
+                msg.append("Content-Type: text/plain; charset=UTF-8\r\n");
+                msg.append("Content-Transfer-Encoding: base64\r\n\r\n");
+                msg.append(mimeBase64((body == null ? "" : body).getBytes(StandardCharsets.UTF_8))).append("\r\n");
+                msg.append("--").append(boundary).append("\r\n");
+                msg.append("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; name=\"").append(encodedName).append("\"\r\n");
+                msg.append("Content-Disposition: attachment; filename=\"").append(encodedName).append("\"\r\n");
+                msg.append("Content-Transfer-Encoding: base64\r\n\r\n");
+                msg.append(mimeBase64(attachment)).append("\r\n");
+                msg.append("--").append(boundary).append("--\r\n");
+            } else {
+                msg.append("Content-Type: text/plain; charset=UTF-8\r\n");
+                msg.append("Content-Transfer-Encoding: base64\r\n\r\n");
+                msg.append(mimeBase64((body == null ? "" : body).getBytes(StandardCharsets.UTF_8))).append("\r\n");
+            }
+
+            out.write(msg.toString());
+            out.write(".\r\n");
+            out.flush();
+            smtpExpect(in, 250);
+            try { smtpCommand(out, in, "QUIT", 221); } catch (Exception ignored) {}
+        }
+    }
+
+    private void notifyMailResult(String contextId, boolean ok, String message) {
+        if (webView == null) return;
+        final String js = "if(window.onNativeMailResult)window.onNativeMailResult("
+                + JSONObject.quote(contextId == null ? "" : contextId) + ","
+                + (ok ? "true" : "false") + ","
+                + JSONObject.quote(message == null ? "" : message) + ");";
+        webView.post(() -> webView.evaluateJavascript(js, null));
+    }
+
+    private String smtpErrorMessage(Exception e) {
+        String m = e == null ? "" : String.valueOf(e.getMessage());
+        if (m.contains("535")) return "Mail.ru отклонил авторизацию. Проверьте Email и пароль для внешнего приложения.";
+        if (m.contains("550") || m.contains("553")) return "Mail.ru отклонил адрес получателя или отправителя.";
+        if (m.toLowerCase(Locale.ROOT).contains("timeout")) return "Не удалось связаться с Mail.ru: превышено время ожидания.";
+        return "Ошибка SMTP: " + (m.isEmpty() ? e.getClass().getSimpleName() : m);
+    }
+
     public class NativeStoreBridge {
+        @JavascriptInterface public boolean saveSmtpCredentials(String email, String password) {
+            return storeSmtpCredentials(email, password);
+        }
+
+        @JavascriptInterface public boolean isSmtpConfigured() { return smtpReady(); }
+
+        @JavascriptInterface public String getSmtpSenderEmail() {
+            String x = prefs.getString(PREF_SMTP_EMAIL, "");
+            return x == null ? "" : x;
+        }
+
+        @JavascriptInterface public void clearSmtpCredentials() { clearSmtp(); }
+
+        @JavascriptInterface public String smtpSendText(String email, String subject, String body, String contextId) {
+            if (!smtpReady()) return "NOT_CONFIGURED";
+            if (email == null || !email.contains("@")) return "BAD_EMAIL";
+            new Thread(() -> {
+                try {
+                    smtpSend(email, subject, body, null, null);
+                    notifyMailResult(contextId, true, "Письмо отправлено на " + email);
+                } catch (Exception e) {
+                    notifyMailResult(contextId, false, smtpErrorMessage(e));
+                }
+            }, "PostomatMailText").start();
+            return "QUEUED";
+        }
+
+        @JavascriptInterface public String smtpSendBase64Attachment(String base64, String fileName, String email,
+                                                                     String subject, String body, String contextId) {
+            if (!smtpReady()) return "NOT_CONFIGURED";
+            if (email == null || !email.contains("@")) return "BAD_EMAIL";
+            new Thread(() -> {
+                try {
+                    byte[] data = Base64.decode(base64 == null ? "" : base64, Base64.DEFAULT);
+                    smtpSend(email, subject, body, data, fileName);
+                    notifyMailResult(contextId, true, "Отчёт отправлен на " + email);
+                } catch (Exception e) {
+                    notifyMailResult(contextId, false, smtpErrorMessage(e));
+                }
+            }, "PostomatMailAttachment").start();
+            return "QUEUED";
+        }
+
         @JavascriptInterface public boolean hasRootFolder() { return hasTree(treeUri()); }
 
         @JavascriptInterface public String getRootFolderLabel() {
