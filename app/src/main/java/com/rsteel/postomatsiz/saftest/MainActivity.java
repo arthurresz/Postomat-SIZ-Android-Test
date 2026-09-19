@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.30-standard-classic-ui-monthly-movement-cleanup';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.31-standard-classic-ui-weekly-current-period';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -190,7 +190,7 @@ runStorageMaintenance=function(){
 
 adminReports=function(){
   ensureArchive();
-  const months=reportMonths(),weeks=reportWeeks(),mSel=window.__reportMonth||monthKey(new Date().getFullYear(),new Date().getMonth()+1),wSel=window.__reportWeek||prevWeekKey();
+  const months=reportMonths(),weeks=reportWeeks(),mSel=window.__reportMonth||monthKey(new Date().getFullYear(),new Date().getMonth()+1),wSel=window.__reportWeek||weekKeyFromStart(weekBoundsFromDate(new Date()).start);
   const monthOptions=months.map(k=>`<option value="${k}" ${k===mSel?'selected':''}>${k}</option>`).join('');
   const weekOptions=weeks.map(k=>`<option value="${k}" ${k===wSel?'selected':''}>${weekLabel(k)}</option>`).join('');
   const reports=db.archive.reports.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(r=>`<div class="archiveItem"><div class="row"><b>${r.type==='weekly'?'Недельный':'Месячный'} отчёт ${esc(r.label||r.key)}</b><span class="badge">${r.auto?'АВТО':'РУЧНОЙ'}</span></div><div class="meta">${fmtDate(r.createdAt)} • ${esc(r.fileName||'Отчёт.xlsx')}<br>${r.storage==='DEVICE_FILE'?'Файл: '+esc(r.path||r.fileName):'Хранение: внутренний архив'}</div><div class="archiveActions"><button class="btn small primary" data-view-report="${esc(r.id||'')}">Просмотреть</button></div></div>`).join('');
@@ -1772,6 +1772,21 @@ buildOneSheetXlsx=function(type,key){
   }
 
   let sectionNo=3;
+
+  if(type==='weekly'){
+    rrMergeRow(rows,merges,sectionNo+'. ВЫДАНО СИЗ СОТРУДНИКАМ ЗА НЕДЕЛЮ',3);sectionNo++;
+    rrRow(rows,['Сотрудник','Ячейка','СИЗ','Выдано, шт.','Кол-во выдач','Первая выдача','Последняя выдача','',''],4);
+    const weeklyIssuedRows=rrMonthlyIssuedByEmployeePpe(d);
+    if(weeklyIssuedRows.length){
+      weeklyIssuedRows.forEach(function(x){
+        rrRow(rows,[x.employee,x.cell,x.ppe,x.qty,x.count,x.first,x.last,'',''],7);
+      });
+      rrRow(rows,['ИТОГО','','',d.totalIssued,'','','','',''],11);
+    }else{
+      const r=rows.length+1;rrRow(rows,['В выбранной неделе выдач СИЗ не было'],10);merges.push('A'+r+':I'+r);
+    }
+  }
+
   if(type==='monthly'){
     rrMergeRow(rows,merges,sectionNo+'. ВЫДАНО СИЗ СОТРУДНИКАМ ЗА МЕСЯЦ',3);sectionNo++;
     rrRow(rows,['Сотрудник','Ячейка','СИЗ','Выдано, шт.','Кол-во выдач','Первая выдача','Последняя выдача','',''],4);
@@ -1994,6 +2009,9 @@ showAdmin=function(tab='overview',push=true){
   if(tab==='reports'&&!window.__reportMonth){
     window.__reportMonth=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
   }
+  if(tab==='reports'&&!window.__reportWeek){
+    window.__reportWeek=weekKeyFromStart(weekBoundsFromDate(new Date()).start);
+  }
   __showAdminV329(tab,push);
 };
 
@@ -2034,6 +2052,67 @@ reportPreviewHtml=function(type,key){
   const start=base.indexOf(startMarker);
   const end=base.indexOf(endMarker);
   if(start>=0&&end>start)return base.slice(0,start)+movement+base.slice(end);
+  return base;
+};
+
+""";
+    }
+
+
+    private String weeklyReportPreviewPatchScript() {
+        return """
+
+// ===== v3.31 weekly preview: current week + period-only movement =====
+const __reportPreviewHtmlV331=reportPreviewHtml;
+reportPreviewHtml=function(type,key){
+  const base=__reportPreviewHtmlV331(type,key);
+  if(type!=='weekly')return base;
+
+  const d=calcReportData(type,key);
+  const names=new Set([].concat(Object.keys(d.byPpe),Object.keys(d.replByPpe)));
+  const movementRows=[];
+  Array.from(names).sort(function(a,b){return a.localeCompare(b,'ru')}).forEach(function(name){
+    const stat=d.byPpe[name]||{q:0,count:0,people:new Set()};
+    const issued=Number(stat.q||0);
+    const repl=Number(d.replByPpe[name]||0);
+    if(issued>0||repl>0){
+      movementRows.push('<tr><td>'+esc(name)+'</td><td>'+issued+'</td><td>'+repl+'</td><td>'+(repl-issued)+'</td><td>'+Number(stat.count||0)+'</td><td>'+stat.people.size+'</td></tr>');
+    }
+  });
+
+  const issuedRows=rrMonthlyIssuedByEmployeePpe(d);
+  const issuedBody=issuedRows.length
+    ?issuedRows.map(function(x){
+      return '<tr><td>'+esc(x.employee)+'</td><td>'+esc(x.cell)+'</td><td>'+esc(x.ppe)+'</td><td>'+x.qty+'</td><td>'+x.count+'</td><td>'+esc(x.first)+'</td><td>'+esc(x.last)+'</td></tr>';
+    }).join('')
+    :'<tr><td colspan="7">В выбранной неделе выдач СИЗ не было</td></tr>';
+
+  const movement='<div class="reportSection">2. ДВИЖЕНИЕ СИЗ ЗА НЕДЕЛЮ</div>'
+    +'<div class="reportTableWrap"><table class="reportTable"><thead><tr>'
+    +'<th>СИЗ</th><th>Выдано, шт.</th><th>Пополнено, шт.</th><th>Баланс движения</th><th>Кол-во выдач</th><th>Сотрудников</th>'
+    +'</tr></thead><tbody>'
+    +(movementRows.length?movementRows.join('')+'<tr><td><b>ИТОГО</b></td><td><b>'+d.totalIssued+'</b></td><td><b>'+d.totalRepl+'</b></td><td><b>'+(d.totalRepl-d.totalIssued)+'</b></td><td></td><td></td></tr>':'<tr><td colspan="6">За выбранную неделю выдач и пополнений не было</td></tr>')
+    +'</tbody></table></div>';
+
+  const issued='<div class="reportSection">3. ВЫДАНО СИЗ СОТРУДНИКАМ ЗА НЕДЕЛЮ</div>'
+    +'<div class="reportTableWrap"><table class="reportTable"><thead><tr>'
+    +'<th>Сотрудник</th><th>Ячейка</th><th>СИЗ</th><th>Выдано, шт.</th><th>Кол-во выдач</th><th>Первая выдача</th><th>Последняя выдача</th>'
+    +'</tr></thead><tbody>'+issuedBody
+    +(issuedRows.length?'<tr><td><b>ИТОГО</b></td><td></td><td></td><td><b>'+d.totalIssued+'</b></td><td></td><td></td><td></td></tr>':'')
+    +'</tbody></table></div>';
+
+  const startMarker='<div class="reportSection">2. РАСХОД ПО ВИДАМ СИЗ</div>';
+  const attentionMarker='<div class="reportSection">3. ТРЕБУЕТ ВНИМАНИЯ</div>';
+  const start=base.indexOf(startMarker);
+  const att=base.indexOf(attentionMarker);
+  if(start>=0&&att>start){
+    let rest=base.slice(att);
+    rest=rest
+      .replace('<div class="reportSection">3. ТРЕБУЕТ ВНИМАНИЯ</div>','<div class="reportSection">4. ТРЕБУЕТ ВНИМАНИЯ</div>')
+      .replace('<div class="reportSection">4. ДЕТАЛИЗАЦИЯ ВЫДАЧ</div>','<div class="reportSection">5. ДЕТАЛИЗАЦИЯ ВЫДАЧ</div>')
+      .replace('<div class="reportSection">5. ПОПОЛНЕНИЯ</div>','<div class="reportSection">6. ПОПОЛНЕНИЯ</div>');
+    return base.slice(0,start)+movement+issued+rest;
+  }
   return base;
 };
 
