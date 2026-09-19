@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 42
-        versionName = "3.42-standard-classic-ui-20-user-grid"
+        versionCode = 43
+        versionName = "3.43-standard-classic-ui-user-pin-selection"
     }
 
     buildTypes {
