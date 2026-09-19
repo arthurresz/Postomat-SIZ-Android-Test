@@ -26,6 +26,9 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -115,10 +118,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.46-standard-classic-ui-operator-layout-fix';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.47-RC1';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + productionRcPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -3402,6 +3405,224 @@ showOperator=function(push=true){
 """;
     }
 
+
+    private String productionRcPatchScript() {
+        return """
+
+// ===== v3.47 RC1 real postomat controller =====
+function rcParseNativeJsonV347(raw,label){
+  const text=String(raw==null?'':raw).trim();
+  if(!text)throw new Error((label||'Контроллер')+': пустой ответ');
+  let data;
+  try{data=JSON.parse(text)}catch(e){throw new Error((label||'Контроллер')+': некорректный JSON');}
+  if(data&&data.error)throw new Error(String(data.error));
+  return data;
+}
+
+apiLogin=async function(address,password){
+  if(typeof NativeStore==='undefined'||typeof NativeStore.postomatLogin!=='function'){
+    throw new Error('Нативный модуль связи с постоматом недоступен');
+  }
+  const base=String(address||'').trim().replace(/\/+$/,'');
+  if(!base)throw new Error('Укажите адрес контроллера');
+  const data=rcParseNativeJsonV347(
+    NativeStore.postomatLogin(base,String(password||'')),
+    'Авторизация'
+  );
+  if(!data.sid)throw new Error('Контроллер не вернул SID');
+  session.sid=String(data.sid);
+  session.apiRole=String(data.al==null?'':data.al);
+  session.connected=true;
+  session.mode='LIVE';
+  db.settings.address=base;
+  db.settings.mode='LIVE';
+  saveDb();
+  return data;
+};
+
+apiCells=async function(){
+  if(!session.sid||session.sid==='DEMO-SID')throw new Error('Нет активной сессии постамата');
+  const data=rcParseNativeJsonV347(
+    NativeStore.postomatGetCells(String(db.settings.address||'http://10.10.10.1'),String(session.sid)),
+    'Чтение ячеек'
+  );
+  const list=Array.isArray(data)?data:(Array.isArray(data.boxs)?data.boxs:(Array.isArray(data.data)?data.data:null));
+  if(!list)throw new Error('Контроллер вернул неожиданный формат списка ячеек');
+  session.connected=true;
+  return list;
+};
+
+apiCell=async function(cid){
+  const list=await apiCells();
+  const found=list.find(function(x){return Number(x.bid)===Number(cid);});
+  if(!found)throw new Error('Ячейка BID '+cid+' не найдена контроллером');
+  return found;
+};
+
+apiOpen=async function(cid){
+  if(!session.sid||session.sid==='DEMO-SID')throw new Error('Нет активной сессии постамата');
+  const data=rcParseNativeJsonV347(
+    NativeStore.postomatOpenCell(
+      String(db.settings.address||'http://10.10.10.1'),
+      String(session.sid),
+      Number(cid)
+    ),
+    'Открытие ячейки'
+  );
+  if(data.read!=null&&String(data.read)!=='ok'){
+    throw new Error('Контроллер не подтвердил открытие ячейки');
+  }
+  return data;
+};
+
+chrome=function(content){
+  const online=!!(session.connected&&session.sid&&session.sid!=='DEMO-SID');
+  const status=online
+    ?'<span class="dot ok"></span><span>Постомат подключён</span>'
+    :'<span class="dot err"></span><span>Нет подключения</span>';
+  const back='<button id="globalBack" class="topBack '+(canAppBack()?'':'hidden')+'">← НАЗАД</button>';
+  return '<div class="topbar">'+back
+    +'<div class="brand"><div class="brandmark">P</div><div class="brandtext"><b>Постомат расходных материалов</b><span>Выдача • пополнение • контроль</span></div></div>'
+    +'<div class="spacer"></div><div class="conn">'+status+'</div><div class="version">v'+APP_VERSION+'</div></div>'
+    +'<div class="screen">'+content+'</div>';
+};
+
+function cleanRcUiV347(){
+  document.querySelectorAll('.betaBar').forEach(function(x){x.style.display='none';});
+  document.querySelectorAll('[data-nav="simulator"]').forEach(function(x){x.style.display='none';});
+  const reset=byId('resetDemo');if(reset)reset.style.display='none';
+  const autoClose=byId('setAutoClose');
+  if(autoClose&&autoClose.closest('.field'))autoClose.closest('.field').style.display='none';
+}
+
+const __renderRcV347=render;
+render=function(html){
+  __renderRcV347(html);
+  cleanRcUiV347();
+};
+
+showConnect=function(push=true){
+  if(push)setUi({screen:'connect',role:null,tab:null},true);
+  else uiState={screen:'connect',role:null,tab:null};
+
+  session.role=null;
+  session.user=null;
+  session.connected=false;
+  session.sid=null;
+  session.apiRole='';
+
+  const address=String(db.settings.address||'http://10.10.10.1');
+  render('<div class="centerScreen"><div class="panel connectPanel" style="max-width:620px;margin:28px auto">'
+    +'<div class="h1">Подключение к постамату</div>'
+    +'<p class="sub">RC1 работает с реальным контроллером постамата. Планшет должен быть подключён к сети постамата.</p>'
+    +'<div class="note" style="margin-top:12px">Адрес по умолчанию: <b>http://10.10.10.1</b>. Пароль используется только для текущего запуска приложения и не сохраняется.</div>'
+    +'<div class="field" style="margin-top:16px"><label>Адрес контроллера</label><input id="rcControllerAddr" class="input" data-vk="latin" value="'+esc(address)+'"></div>'
+    +'<div class="field"><label>Пароль штатного web-интерфейса</label><input id="rcControllerPassword" class="input" type="password" autocomplete="off"></div>'
+    +'<button id="rcConnectBtn" class="btn primary block" style="margin-top:14px">ПОДКЛЮЧИТЬСЯ</button>'
+    +'<div id="rcConnectMsg" class="sub" style="margin-top:12px"></div>'
+    +'</div></div>');
+
+  const back=byId('globalBack');if(back)back.style.display='none';
+
+  const btn=byId('rcConnectBtn');
+  if(btn)btn.onclick=async function(){
+    const addr=String(byId('rcControllerAddr').value||'').trim();
+    const pwd=String(byId('rcControllerPassword').value||'');
+    btn.disabled=true;
+    byId('rcConnectMsg').textContent='Проверяю связь с контроллером…';
+    try{
+      await apiLogin(addr,pwd);
+      const list=await apiCells();
+      if(!list.length)throw new Error('Контроллер не вернул ни одной ячейки');
+      byId('rcControllerPassword').value='';
+      toast('Связь с постаматом установлена','ok');
+      showBetaHome(false);
+    }catch(e){
+      session.connected=false;session.sid=null;
+      const msg=e&&e.message?e.message:String(e);
+      byId('rcConnectMsg').textContent='Ошибка: '+msg;
+      toast('Не удалось подключиться к постамату','error');
+    }finally{
+      btn.disabled=false;
+    }
+  };
+};
+
+const __homeRcV347=showBetaHome;
+showBetaHome=function(push=true){
+  if(!session.connected||!session.sid||session.sid==='DEMO-SID'){
+    showConnect(push);
+    return;
+  }
+
+  const sid=session.sid;
+  const apiRole=session.apiRole;
+  const address=String(db.settings.address||'http://10.10.10.1');
+
+  __homeRcV347(push);
+
+  session.sid=sid;
+  session.apiRole=apiRole;
+  session.connected=true;
+  session.mode='LIVE';
+  db.settings.mode='LIVE';
+
+  const tag=document.querySelector('.betaTag');
+  if(tag)tag.textContent='● RC1 • ПОСТАМАТ ПОДКЛЮЧЁН';
+  const hero=document.querySelector('.homeHeroV318');
+  if(hero){
+    const h=hero.querySelector('h1');if(h)h.textContent='ПОСТАМАТ РАСХОДНЫХ МАТЕРИАЛОВ';
+    const note=hero.querySelector('.homeHeroNoteV318');
+    if(note)note.textContent='Контроллер: '+address+' • реальные ячейки активны';
+  }
+  const op=byId('betaOperator');
+  if(op){
+    const t=op.querySelector('.homeRoleTitleV318');
+    if(t)t.textContent='ПОЛУЧЕНИЕ РАСХОДНЫХ МАТЕРИАЛОВ';
+  }
+  const back=byId('globalBack');if(back)back.style.display='none';
+  cleanRcUiV347();
+};
+
+showRoles=function(){showBetaHome(false);};
+
+const __showAdminRcV347=showAdmin;
+showAdmin=function(tab='overview',push=true){
+  if(tab==='simulator')tab='overview';
+  __showAdminRcV347(tab,push);
+  cleanRcUiV347();
+
+  if(tab==='settings'){
+    db.settings.mode='LIVE';
+    const save=byId('saveSettings');
+    if(save&&!save.dataset.rcLiveV347){
+      save.dataset.rcLiveV347='1';
+      const old=save.onclick;
+      save.onclick=function(){
+        if(typeof old==='function')old.call(save);
+        db.settings.mode='LIVE';
+        saveDb();
+      };
+    }
+  }
+};
+
+setTimeout(function(){
+  try{
+    session.sid=null;
+    session.connected=false;
+    session.mode='LIVE';
+    db.settings.mode='LIVE';
+    saveDb();
+    showConnect(false);
+  }catch(e){
+    console.error('RC1 startup',e);
+  }
+},0);
+
+""";
+    }
+
     private String escapeHtml(String x) {
         return x == null ? "" : x.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
@@ -3678,7 +3899,95 @@ showOperator=function(push=true){
         return "Ошибка SMTP: " + (m.isEmpty() ? e.getClass().getSimpleName() : m);
     }
 
+
+    private String normalizePostomatBase(String base) throws Exception {
+        String x = base == null ? "" : base.trim();
+        while (x.endsWith("/")) x = x.substring(0, x.length() - 1);
+        if (!x.startsWith("http://") && !x.startsWith("https://")) {
+            throw new Exception("Адрес контроллера должен начинаться с http:// или https://");
+        }
+        return x;
+    }
+
+    private String postomatHttp(String url, String method, String body, String contentType) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
+        conn.setUseCaches(false);
+        conn.setRequestMethod(method);
+        conn.setRequestProperty("Accept", "application/json");
+        if (body != null) {
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", contentType == null ? "application/x-www-form-urlencoded" : contentType);
+            byte[] data = body.getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(data.length);
+            try (OutputStream out = conn.getOutputStream()) {
+                out.write(data);
+                out.flush();
+            }
+        }
+
+        int code = conn.getResponseCode();
+        InputStream stream = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+        String text = "";
+        if (stream != null) {
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                StringBuilder b = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) b.append(line);
+                text = b.toString();
+            }
+        }
+        conn.disconnect();
+
+        if (code < 200 || code >= 300) {
+            throw new Exception("HTTP " + code + (text.isEmpty() ? "" : ": " + text));
+        }
+        return text.isEmpty() ? "{}" : text;
+    }
+
+    private String postomatError(Exception e) {
+        try {
+            JSONObject o = new JSONObject();
+            String m = e == null || e.getMessage() == null ? "Неизвестная ошибка связи" : e.getMessage();
+            o.put("error", m);
+            return o.toString();
+        } catch (Exception ignored) {
+            return "{\"error\":\"Ошибка связи с контроллером\"}";
+        }
+    }
+
     public class NativeStoreBridge {
+        @JavascriptInterface public String postomatLogin(String base, String password) {
+            try {
+                String root = normalizePostomatBase(base);
+                String body = "password=" + URLEncoder.encode(password == null ? "" : password, "UTF-8");
+                return postomatHttp(root + "/api/login", "POST", body, "application/x-www-form-urlencoded");
+            } catch (Exception e) {
+                return postomatError(e);
+            }
+        }
+
+        @JavascriptInterface public String postomatGetCells(String base, String sid) {
+            try {
+                String root = normalizePostomatBase(base);
+                String q = URLEncoder.encode(sid == null ? "" : sid, "UTF-8");
+                return postomatHttp(root + "/api/boxs?sid=" + q, "GET", null, null);
+            } catch (Exception e) {
+                return postomatError(e);
+            }
+        }
+
+        @JavascriptInterface public String postomatOpenCell(String base, String sid, int bid) {
+            try {
+                String root = normalizePostomatBase(base);
+                String q = URLEncoder.encode(sid == null ? "" : sid, "UTF-8");
+                return postomatHttp(root + "/api/boxs?sid=" + q + "&bid=" + bid + "&cmd=open", "GET", null, null);
+            } catch (Exception e) {
+                return postomatError(e);
+            }
+        }
+
         @JavascriptInterface public boolean saveSmtpCredentials(String email, String password) {
             return storeSmtpCredentials(email, password);
         }
