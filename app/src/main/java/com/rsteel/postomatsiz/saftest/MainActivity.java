@@ -24,9 +24,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.GZIPInputStream;
@@ -35,6 +39,8 @@ import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
@@ -49,6 +55,7 @@ public class MainActivity extends Activity {
     private static final String PREF_SMTP_SECRET = "smtp_password_secret";
     private static final String SMTP_KEY_ALIAS = "postomat_siz_smtp_key";
     private static final String SMTP_HOST = "smtp.mail.ru";
+    private static final String SMTP_FALLBACK_IP = "94.100.177.1";
     private static final int SMTP_PORT = 465;
     private WebView webView;
     private SharedPreferences prefs;
@@ -115,7 +122,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.25-standard-classic-ui-background-mail';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.26-standard-classic-ui-smtp-dns-fallback';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + page.substring(scriptEnd);
@@ -1668,6 +1675,37 @@ sendWarehouseReplenishmentReport=function(){
                 .encodeToString(bytes == null ? new byte[0] : bytes);
     }
 
+    private SSLSocket createSmtpSocket() throws Exception {
+        SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+        try {
+            SSLSocket socket = (SSLSocket) factory.createSocket(SMTP_HOST, SMTP_PORT);
+            configureSmtpTls(socket);
+            return socket;
+        } catch (UnknownHostException dnsError) {
+            Socket raw = new Socket();
+            try {
+                raw.connect(new InetSocketAddress(SMTP_FALLBACK_IP, SMTP_PORT), 15000);
+                SSLSocket socket = (SSLSocket) factory.createSocket(raw, SMTP_HOST, SMTP_PORT, true);
+                configureSmtpTls(socket);
+                return socket;
+            } catch (Exception fallbackError) {
+                try { raw.close(); } catch (Exception ignored) {}
+                throw new IllegalStateException(
+                        "DNS не разрешил " + SMTP_HOST + ", резервное подключение к " + SMTP_FALLBACK_IP
+                                + " тоже не удалось: " + fallbackError.getMessage(),
+                        fallbackError);
+            }
+        }
+    }
+
+    private void configureSmtpTls(SSLSocket socket) {
+        SSLParameters p = socket.getSSLParameters();
+        p.setEndpointIdentificationAlgorithm("HTTPS");
+        try { p.setServerNames(Collections.singletonList(new SNIHostName(SMTP_HOST))); }
+        catch (Exception ignored) {}
+        socket.setSSLParameters(p);
+    }
+
     private void smtpSend(String recipient, String subject, String body,
                           byte[] attachment, String attachmentName) throws Exception {
         if (!smtpReady()) throw new IllegalStateException("SMTP не настроен");
@@ -1676,8 +1714,7 @@ sendWarehouseReplenishmentReport=function(){
         recipient = safeHeader(recipient);
         if (recipient.isEmpty() || !recipient.contains("@")) throw new IllegalArgumentException("Некорректный Email получателя");
 
-        SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
-        try (SSLSocket socket = (SSLSocket) factory.createSocket(SMTP_HOST, SMTP_PORT);
+        try (SSLSocket socket = createSmtpSocket();
              BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
              BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.US_ASCII))) {
             socket.setSoTimeout(45000);
@@ -1739,6 +1776,8 @@ sendWarehouseReplenishmentReport=function(){
         if (m.contains("535")) return "Mail.ru отклонил авторизацию. Проверьте Email и пароль для внешнего приложения.";
         if (m.contains("550") || m.contains("553")) return "Mail.ru отклонил адрес получателя или отправителя.";
         if (m.toLowerCase(Locale.ROOT).contains("timeout")) return "Не удалось связаться с Mail.ru: превышено время ожидания.";
+        if (m.contains("DNS не разрешил")) return "Сеть планшета не разрешает smtp.mail.ru, и резервное подключение тоже недоступно. Проверьте интернет, DNS/VPN или ограничения Wi‑Fi.";
+        if (e instanceof UnknownHostException || m.contains("Unable to resolve host")) return "Планшет не может разрешить smtp.mail.ru через DNS.";
         return "Ошибка SMTP: " + (m.isEmpty() ? e.getClass().getSimpleName() : m);
     }
 
