@@ -3741,6 +3741,9 @@ showConnect=function(push=true){
           throw new Error('Не удалось сохранить пароль в защищённом хранилище Android');
         }
       }else{
+        if(!NativeStore.updateControllerAddress(addr)){
+          throw new Error('Не удалось обновить адрес контроллера');
+        }
         db.settings.address=addr;
         saveDb();
       }
@@ -4197,6 +4200,12 @@ setTimeout(function(){
 
         @JavascriptInterface public boolean hasControllerCredentials() {
             return controllerCredentialsReady();
+        }
+
+        @JavascriptInterface public boolean updateControllerAddress(String address) {
+            String password = controllerPassword();
+            if (password.isEmpty()) return false;
+            return storeControllerCredentials(address, password);
         }
 
         @JavascriptInterface public String getControllerAddress() {
