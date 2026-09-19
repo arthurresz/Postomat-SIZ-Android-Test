@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.44-standard-classic-ui-8-consumables-grid';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.45-standard-classic-ui-qty-stepper';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -3185,6 +3185,105 @@ showOperator=function(push=true){
     +'@media(max-width:560px){.issueLayout{grid-template-columns:1fr!important}.issueLayout>.cards2{grid-template-columns:repeat(2,minmax(0,1fr))!important}.issueLayout .ppeCard{height:112px!important;min-height:112px!important;max-height:112px!important}}';
   document.head.appendChild(s);
 })();
+
+""";
+    }
+
+
+    private String operatorQtyStepperPatchScript() {
+        return """
+
+// ===== v3.45 quantity stepper: minus / value / plus =====
+function installQtyStepperStyleV345(){
+  if(byId('qtyStepperStyleV345'))return;
+  const s=document.createElement('style');
+  s.id='qtyStepperStyleV345';
+  s.textContent=
+    '.qtyStepperV345{display:grid;grid-template-columns:34px 42px 34px;gap:4px;align-items:center;margin-left:auto;}'
+    +'.qtyStepBtnV345{width:34px;height:32px;border:1px solid #c7d2df;border-radius:8px;background:#f4f7fb;color:#203247;font-size:20px;font-weight:900;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;}'
+    +'.qtyStepBtnV345:active:not(:disabled){transform:scale(.95);background:#e7f0fa;}'
+    +'.qtyStepBtnV345.plus{background:#1263b6;border-color:#1263b6;color:#fff;}'
+    +'.qtyStepBtnV345:disabled{opacity:.28;cursor:default;}'
+    +'.qtyStepValueV345{height:32px;border:1px solid #cfd8e5;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#1c2a3a;}'
+    +'.issueLayout .qtyRow{display:flex!important;align-items:center!important;gap:6px!important;}'
+    +'.issueLayout .qtyRow>span:first-child{margin-right:auto!important;}'
+    +'.issueLayout .qtyRow>.sub{margin-left:2px!important;}'
+    +'@media(max-width:720px){.qtyStepperV345{grid-template-columns:31px 38px 31px;gap:3px}.qtyStepBtnV345{width:31px;height:30px}.qtyStepValueV345{height:30px;font-size:13px}}';
+  document.head.appendChild(s);
+}
+
+function applyQtyStepperV345(){
+  installQtyStepperStyleV345();
+
+  document.querySelectorAll('.issueQty').forEach(function(inp){
+    if(inp.dataset.stepperV345==='1')return;
+    inp.dataset.stepperV345='1';
+
+    const row=inp.closest('.qtyRow');
+    if(!row)return;
+
+    const max=Math.max(0,Number(inp.max||0));
+    const disabled=inp.disabled||max<=0;
+
+    // Скрываем ручной ввод: значение хранится в штатном input,
+    // поэтому остальная логика приложения продолжает работать без изменений.
+    inp.style.display='none';
+    inp.tabIndex=-1;
+    inp.setAttribute('inputmode','none');
+
+    const box=document.createElement('div');
+    box.className='qtyStepperV345';
+
+    const minus=document.createElement('button');
+    minus.type='button';
+    minus.className='qtyStepBtnV345 minus';
+    minus.textContent='−';
+
+    const value=document.createElement('div');
+    value.className='qtyStepValueV345';
+
+    const plus=document.createElement('button');
+    plus.type='button';
+    plus.className='qtyStepBtnV345 plus';
+    plus.textContent='+';
+
+    function syncButtons(){
+      const q=Math.max(0,Math.min(max,Number(inp.value||0)));
+      inp.value=String(q);
+      value.textContent=String(q);
+      minus.disabled=disabled||q<=0;
+      plus.disabled=disabled||q>=max;
+    }
+
+    function setQty(next){
+      const q=Math.max(0,Math.min(max,Number(next||0)));
+      if(Number(inp.value||0)===q){syncButtons();return;}
+      inp.value=String(q);
+      try{
+        inp.dispatchEvent(new Event('input',{bubbles:true}));
+      }catch(e){
+        if(typeof updateIssueSummary==='function')updateIssueSummary();
+      }
+      syncButtons();
+    }
+
+    minus.onclick=function(){setQty(Number(inp.value||0)-1);};
+    plus.onclick=function(){setQty(Number(inp.value||0)+1);};
+
+    box.appendChild(minus);
+    box.appendChild(value);
+    box.appendChild(plus);
+    row.insertBefore(box,inp.nextSibling);
+
+    syncButtons();
+  });
+}
+
+const __showOperatorV345=showOperator;
+showOperator=function(push=true){
+  __showOperatorV345(push);
+  applyQtyStepperV345();
+};
 
 """;
     }
