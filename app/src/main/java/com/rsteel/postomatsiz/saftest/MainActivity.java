@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.36-standard-classic-ui-consumables-report';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.37-standard-classic-ui-20-cells-users';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -2391,6 +2391,120 @@ confirmIssue=function(){
     showOperator();
   });
 };
+
+""";
+    }
+
+
+    private String initialCatalogPatchScript() {
+        return """
+
+// ===== v3.37 initial structure: 20 cells + employee catalog =====
+(function seedInitialCatalogV337(){
+  try{
+    if(!window.db)return;
+    db.settings=db.settings||{};
+    if(db.settings.initialCatalogV337)return;
+
+    const employeeNames=[
+      'Власов Р.В.',
+      'Дроздов Д.В.',
+      'Жилко В.А.',
+      'Иссоев Г.А.',
+      'Комарницкий А.В.',
+      'Лапик В.С.',
+      'Львов П.Г.',
+      'Михайлов А.В.',
+      'Орехов Р.С.',
+      'Погорельский А.Ю.',
+      'Сироткин А.В.',
+      'Служба механиков',
+      'Филатов А.С.',
+      'Фитисов М.А.',
+      'Черников Ю.А.',
+      'Шашин И.В.'
+    ];
+
+    db.cells=Array.isArray(db.cells)?db.cells:[];
+    db.sim=db.sim||{};
+    for(let id=1;id<=20;id++){
+      let c=db.cells.find(function(x){return Number(x.id)===id});
+      if(!c){
+        c={id:id,name:'Ячейка №'+id,type:'INDIVIDUAL',active:true};
+        db.cells.push(c);
+      }else{
+        if(!c.name)c.name='Ячейка №'+id;
+        if(!c.type)c.type='INDIVIDUAL';
+        c.active=true;
+      }
+      if(db.sim[id]==null)db.sim[id]='CLOSED';
+    }
+    db.cells.sort(function(a,b){return Number(a.id||0)-Number(b.id||0)});
+
+    db.employees=Array.isArray(db.employees)?db.employees:[];
+
+    // Старого тестового пользователя превращаем в пользователя из фактического списка,
+    // чтобы не оставлять дубликат "Погорельский А.".
+    let pog=db.employees.find(function(e){
+      const n=String(e.name||'').trim();
+      return e.id!=='WH'&&(n==='Погорельский А.'||n==='Погорельский А');
+    });
+    let pogTarget=db.employees.find(function(e){return String(e.name||'').trim()==='Погорельский А.Ю.'});
+    if(pog&&!pogTarget){
+      pog.name='Погорельский А.Ю.';
+      pog.pin=String(pog.pin||'0000');
+      pog.active=true;
+      pog.cellId=null;
+      pogTarget=pog;
+    }
+
+    const seededIds=[];
+    employeeNames.forEach(function(name,idx){
+      let e=db.employees.find(function(x){return String(x.name||'').trim()===name});
+      if(!e){
+        let id='SEED_EMP_'+String(idx+1).padStart(2,'0');
+        while(db.employees.some(function(x){return x.id===id}))id=id+'_N';
+        e={id:id,name:name,pin:'0000',cellId:null,active:true,role:'OPERATOR'};
+        db.employees.push(e);
+      }
+      e.name=name;
+      e.active=true;
+      if(!String(e.pin||'').trim())e.pin='0000';
+      e.cellId=null;
+      if(!e.role)e.role='OPERATOR';
+      seededIds.push(e.id);
+    });
+
+    // По условию первоначального каталога пользователи пока не связаны с ячейками.
+    // Существующие тестовые назначения этих пользователей деактивируем один раз.
+    db.assignments=Array.isArray(db.assignments)?db.assignments:[];
+    db.assignments.forEach(function(a){
+      if(seededIds.indexOf(a.employeeId)>=0)a.active=false;
+    });
+
+    // Убираем остаточный старый демо-профиль, если он не был преобразован выше.
+    db.employees=db.employees.filter(function(e){
+      const n=String(e.name||'').trim();
+      if(e.id==='WH')return true;
+      return n!=='Погорельский А.'&&n!=='Погорельский А';
+    });
+
+    // Фактические сотрудники идут по алфавиту; технические учётные записи остаются после них.
+    const order=new Map(employeeNames.map(function(n,i){return [n,i]}));
+    db.employees.sort(function(a,b){
+      const ai=order.has(String(a.name||'').trim())?order.get(String(a.name||'').trim()):9999;
+      const bi=order.has(String(b.name||'').trim())?order.get(String(b.name||'').trim()):9999;
+      if(ai!==bi)return ai-bi;
+      return String(a.name||'').localeCompare(String(b.name||''),'ru');
+    });
+
+    db.settings.initialCatalogV337=true;
+    if(typeof saveDb==='function')saveDb();
+    else if(typeof save==='function')save();
+  }catch(e){
+    console.error('initialCatalogV337',e);
+  }
+})();
 
 """;
     }
