@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.27-standard-classic-ui-monthly-issued-by-person';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.28-standard-classic-ui-final-warehouse-report';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + page.substring(scriptEnd);
@@ -1411,37 +1411,148 @@ sendReportByEmail=function(type,key,email){
 };
 
 function buildWarehouseReplenishmentXlsx(){
-  const groups=whQueueGroups(),rows=[];
-  const now=new Date(),stamp=now.toLocaleString('ru-RU');
-  rows.push(['ОТЧЁТ О ВОСПОЛНЕНИИ СИЗ','','','','','','','','']);
-  rows.push(['Сформирован',stamp,'','','','','','','']);
-  rows.push(['Ячейка','Сотрудник','СИЗ','Сейчас','Min','Max','Добавить','Статус','Дата']);
+  const groups=whQueueGroups().slice().sort(function(a,b){
+    return Number(a.cellId||0)-Number(b.cellId||0);
+  });
+  const now=new Date();
+  const stamp=now.toLocaleString('ru-RU');
   let qty=0,positions=0;
+  const data=[];
+
   groups.forEach(function(g){
     const c=cell(g.cellId),o=ownerOfCell(g.cellId);
-    g.tasks.forEach(function(t){
-      const a=t.a,need=Math.max(0,Number(a.target||0)-Number(a.stock||0));
+    let cellLabel=c&&c.name?String(c.name):('№'+g.cellId);
+    if(cellLabel.indexOf('Ячейка ')===0)cellLabel=cellLabel.slice(7);
+    g.tasks.slice().sort(function(a,b){
+      const an=ppe(a.ppeId)?ppe(a.ppeId).name:String(a.ppeId||'СИЗ');
+      const bn=ppe(b.ppeId)?ppe(b.ppeId).name:String(b.ppeId||'СИЗ');
+      return an.localeCompare(bn,'ru');
+    }).forEach(function(t){
+      const a=t.a;
+      const need=Math.max(0,Number(a.target||0)-Number(a.stock||0));
       qty+=need;positions++;
-      rows.push([c?c.name:'Ячейка №'+g.cellId,o?o.name:'Сотрудник не назначен',ppe(t.ppeId)?ppe(t.ppeId).name:String(t.ppeId||'СИЗ'),Number(a.stock||0),Number(a.min||0),Number(a.target||0),need,a.stock===0?'КРИТИЧНО':'ПОПОЛНИТЬ',stamp]);
+      data.push([
+        cellLabel,
+        o&&o.name?o.name:'Сотрудник не назначен',
+        ppe(t.ppeId)?ppe(t.ppeId).name:String(t.ppeId||'СИЗ'),
+        Number(a.stock||0),
+        Number(a.target||0),
+        need
+      ]);
     });
   });
-  if(!groups.length)rows.push(['Восполнение не требуется','','','','','','','','']);
-  rows.push(['ИТОГО','Ячеек: '+groups.length,'Позиций: '+positions,'Единиц добавить: '+qty,'','','','','']);
+
+  const rows=[];
+  rows.push([{v:'ОТЧЁТ О ВОСПОЛНЕНИИ СИЗ',s:1},{},{},{},{},{}]);
+  rows.push([{v:'Сформирован: '+stamp,s:2},{},{},{},{},{}]);
+  rows.push([{v:'Ячеек к пополнению: '+groups.length+'   •   Позиций СИЗ: '+positions+'   •   Всего добавить: '+qty+' шт.',s:3},{},{},{},{},{}]);
+  rows.push([{v:'Ячейка',s:4},{v:'Сотрудник',s:4},{v:'СИЗ',s:4},{v:'Сейчас',s:4},{v:'Max',s:4},{v:'Добавить',s:4}]);
+
+  if(data.length){
+    data.forEach(function(r){
+      rows.push([
+        {v:r[0],s:5},
+        {v:r[1],s:5},
+        {v:r[2],s:5},
+        {v:r[3],s:6},
+        {v:r[4],s:6},
+        {v:r[5],s:7}
+      ]);
+    });
+    rows.push([
+      {v:'ИТОГО',s:8},
+      {v:'',s:8},
+      {v:'',s:8},
+      {v:'',s:8},
+      {v:'',s:8},
+      {v:qty,s:9}
+    ]);
+  }else{
+    rows.push([{v:'На момент формирования восполнение не требуется',s:10},{},{},{},{},{}]);
+  }
 
   let rr='';
   rows.forEach(function(row,ri){
     let cc='';
-    for(let ci=0;ci<9;ci++)cc+=cellXml(row[ci],colName(ci+1)+(ri+1),0);
-    rr+='<row r="'+(ri+1)+'">'+cc+'</row>';
+    for(let ci=0;ci<6;ci++){
+      const x=row[ci]||{v:null,s:0};
+      cc+=cellXml(x.v,colName(ci+1)+(ri+1),x.s||0);
+    }
+    let ht='';
+    if(ri===0)ht=' ht="30" customHeight="1"';
+    else if(ri===3)ht=' ht="28" customHeight="1"';
+    rr+='<row r="'+(ri+1)+'"'+ht+'>'+cc+'</row>';
   });
 
-  const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="3" width="28" customWidth="1"/><col min="4" max="7" width="12" customWidth="1"/><col min="8" max="9" width="20" customWidth="1"/></cols><sheetData>'+rr+'</sheetData></worksheet>';
+  const merges=data.length
+    ?'<mergeCells count="3"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/></mergeCells>'
+    :'<mergeCells count="4"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/><mergeCell ref="A5:F5"/></mergeCells>';
+
+  const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+    +'<cols>'
+      +'<col min="1" max="1" width="14" customWidth="1"/>'
+      +'<col min="2" max="2" width="28" customWidth="1"/>'
+      +'<col min="3" max="3" width="34" customWidth="1"/>'
+      +'<col min="4" max="6" width="14" customWidth="1"/>'
+    +'</cols>'
+    +'<sheetData>'+rr+'</sheetData>'+merges
+    +'<pageMargins left="0.35" right="0.35" top="0.45" bottom="0.45" header="0.2" footer="0.2"/>'
+    +'<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0" paperSize="9"/>'
+    +'</worksheet>';
+
   const ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
   const rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
   const wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Восполнение" sheetId="1" r:id="rId1"/></sheets></workbook>';
   const wbr='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
-  const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="10"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>';
-  return zipStore([{name:'[Content_Types].xml',text:ct},{name:'_rels/.rels',text:rels},{name:'xl/workbook.xml',text:wb},{name:'xl/_rels/workbook.xml.rels',text:wbr},{name:'xl/styles.xml',text:styles},{name:'xl/worksheets/sheet1.xml',text:sheet}]);
+
+  const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<fonts count="5">'
+      +'<font><sz val="10"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+      +'<font><i/><sz val="10"/><color rgb="FF44546A"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="11"/><color rgb="FF7F6000"/><name val="Calibri"/></font>'
+    +'</fonts>'
+    +'<fills count="7">'
+      +'<fill><patternFill patternType="none"/></fill>'
+      +'<fill><patternFill patternType="gray125"/></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FF17365D"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFD9EAF7"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FF5B9BD5"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/></patternFill></fill>'
+    +'</fills>'
+    +'<borders count="2"><border/><border>'
+      +'<left style="thin"><color rgb="FFD9E1F2"/></left><right style="thin"><color rgb="FFD9E1F2"/></right>'
+      +'<top style="thin"><color rgb="FFD9E1F2"/></top><bottom style="thin"><color rgb="FFD9E1F2"/></bottom>'
+    +'</border></borders>'
+    +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    +'<cellXfs count="11">'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      +'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="4" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="4" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+    +'</cellXfs>'
+    +'</styleSheet>';
+
+  return zipStore([
+    {name:'[Content_Types].xml',text:ct},
+    {name:'_rels/.rels',text:rels},
+    {name:'xl/workbook.xml',text:wb},
+    {name:'xl/_rels/workbook.xml.rels',text:wbr},
+    {name:'xl/styles.xml',text:styles},
+    {name:'xl/worksheets/sheet1.xml',text:sheet}
+  ]);
 }
 
 sendWarehouseReplenishmentReport=function(){
