@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 25
-        versionName = "3.25-standard-classic-ui-background-mail"
+        versionCode = 26
+        versionName = "3.26-standard-classic-ui-smtp-dns-fallback"
     }
 
     buildTypes {
