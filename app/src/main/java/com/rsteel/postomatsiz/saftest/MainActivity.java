@@ -115,10 +115,11 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.35-standard-classic-ui-warehouse-issued-reports';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.36-standard-classic-ui-consumables-report';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + page.substring(scriptEnd);
+            page = page.replace("СИЗ", "Расходные материалы");
             return page;
         }
     }
@@ -2153,8 +2154,7 @@ function simpleIssueRows(type,key){
       cell:cellName,
       ppe:x.ppeName||x.nomenclature||x.ppeId||'—',
       employee:x.recipientName||x.employeeName||(owner&&owner.name)||'—',
-      qty:qty,
-      remain:after
+      qty:qty
     };
   });
   return {d:d,rows:rows};
@@ -2166,17 +2166,16 @@ buildOneSheetXlsx=function(type,key){
   const totalQty=items.reduce(function(s,x){return s+x.qty},0);
   const rows=[];
 
-  rows.push([{v:simpleIssueReportTitle(type),s:1},{},{},{},{},{},{}]);
-  rows.push([{v:'Период: '+d.p.label+'   •   Сформирован: '+reportFmtDateTime(new Date()),s:2},{},{},{},{},{},{}]);
-  rows.push([{v:'Операций выдачи: '+items.length+'   •   Выдано всего: '+totalQty+' шт.',s:3},{},{},{},{},{},{}]);
+  rows.push([{v:simpleIssueReportTitle(type),s:1},{},{},{},{},{}]);
+  rows.push([{v:'Период: '+d.p.label+'   •   Сформирован: '+reportFmtDateTime(new Date()),s:2},{},{},{},{},{}]);
+  rows.push([{v:'Операций выдачи: '+items.length+'   •   Выдано всего: '+totalQty+' шт.',s:3},{},{},{},{},{}]);
   rows.push([
     {v:'Дата',s:4},
     {v:'Время',s:4},
     {v:'Ячейка',s:4},
     {v:'Номенклатура',s:4},
     {v:'Сотрудник',s:4},
-    {v:'Выдано',s:4},
-    {v:'Осталось',s:4}
+    {v:'Выдано',s:4}
   ]);
 
   if(items.length){
@@ -2187,8 +2186,7 @@ buildOneSheetXlsx=function(type,key){
         {v:x.cell,s:5},
         {v:x.ppe,s:5},
         {v:x.employee,s:5},
-        {v:x.qty,s:7},
-        {v:x.remain,s:6}
+        {v:x.qty,s:7}
       ]);
     });
     rows.push([
@@ -2197,17 +2195,16 @@ buildOneSheetXlsx=function(type,key){
       {v:'',s:8},
       {v:'',s:8},
       {v:'',s:8},
-      {v:totalQty,s:9},
-      {v:'',s:8}
+      {v:totalQty,s:9}
     ]);
   }else{
-    rows.push([{v:'За выбранный период выдач СИЗ не было',s:10},{},{},{},{},{},{}]);
+    rows.push([{v:'За выбранный период выдач СИЗ не было',s:10},{},{},{},{},{}]);
   }
 
   let rr='';
   rows.forEach(function(row,ri){
     let cc='';
-    for(let ci=0;ci<7;ci++){
+    for(let ci=0;ci<6;ci++){
       const x=row[ci]||{v:null,s:0};
       cc+=cellXml(x.v,colName(ci+1)+(ri+1),x.s||0);
     }
@@ -2218,8 +2215,8 @@ buildOneSheetXlsx=function(type,key){
   });
 
   const merges=items.length
-    ?'<mergeCells count="3"><mergeCell ref="A1:G1"/><mergeCell ref="A2:G2"/><mergeCell ref="A3:G3"/></mergeCells>'
-    :'<mergeCells count="4"><mergeCell ref="A1:G1"/><mergeCell ref="A2:G2"/><mergeCell ref="A3:G3"/><mergeCell ref="A5:G5"/></mergeCells>';
+    ?'<mergeCells count="3"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/></mergeCells>'
+    :'<mergeCells count="4"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/><mergeCell ref="A5:F5"/></mergeCells>';
 
   const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -2230,7 +2227,7 @@ buildOneSheetXlsx=function(type,key){
       +'<col min="3" max="3" width="16" customWidth="1"/>'
       +'<col min="4" max="4" width="34" customWidth="1"/>'
       +'<col min="5" max="5" width="28" customWidth="1"/>'
-      +'<col min="6" max="7" width="12" customWidth="1"/>'
+      +'<col min="6" max="6" width="12" customWidth="1"/>'
     +'</cols>'
     +'<sheetData>'+rr+'</sheetData>'+merges
     +'<pageMargins left="0.35" right="0.35" top="0.45" bottom="0.45" header="0.2" footer="0.2"/>'
@@ -2295,18 +2292,18 @@ reportPreviewHtml=function(type,key){
   const totalQty=items.reduce(function(s,x){return s+x.qty},0);
   const body=items.length
     ?items.map(function(x){
-      return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.time)+'</td><td>'+esc(x.cell)+'</td><td>'+esc(x.ppe)+'</td><td>'+esc(x.employee)+'</td><td>'+x.qty+'</td><td>'+x.remain+'</td></tr>';
+      return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.time)+'</td><td>'+esc(x.cell)+'</td><td>'+esc(x.ppe)+'</td><td>'+esc(x.employee)+'</td><td>'+x.qty+'</td></tr>';
     }).join('')
-    :'<tr><td colspan="7">За выбранный период выдач СИЗ не было</td></tr>';
+    :'<tr><td colspan="6">За выбранный период выдач СИЗ не было</td></tr>';
 
   return '<div class="reportSheet">'
     +'<div class="reportTitle">'+esc(simpleIssueReportTitle(type))+'</div>'
     +'<div class="reportSub">Период: '+esc(d.p.label)+' • Сформирован: '+esc(reportFmtDateTime(new Date()))+'</div>'
     +'<div class="reportSection">Операций выдачи: '+items.length+' • Выдано всего: '+totalQty+' шт.</div>'
     +'<div class="reportTableWrap"><table class="reportTable"><thead><tr>'
-    +'<th>Дата</th><th>Время</th><th>Ячейка</th><th>Номенклатура</th><th>Сотрудник</th><th>Выдано</th><th>Осталось</th>'
+    +'<th>Дата</th><th>Время</th><th>Ячейка</th><th>Номенклатура</th><th>Сотрудник</th><th>Выдано</th>'
     +'</tr></thead><tbody>'+body
-    +(items.length?'<tr><td><b>ИТОГО</b></td><td></td><td></td><td></td><td></td><td><b>'+totalQty+'</b></td><td></td></tr>':'')
+    +(items.length?'<tr><td><b>ИТОГО</b></td><td></td><td></td><td></td><td></td><td><b>'+totalQty+'</b></td></tr>':'')
     +'</tbody></table></div>'
     +'</div>';
 };
