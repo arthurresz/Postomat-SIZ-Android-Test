@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.41-standard-classic-ui-user-grid-fix';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.42-standard-classic-ui-20-user-grid';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorGuidedFlowPatchScript() + page.substring(scriptEnd);
@@ -2692,34 +2692,51 @@ showWarehouse=function(tab='replenish',push=true){
     private String operatorUserGridPatchScript() {
         return """
 
-// ===== v3.41 stable compact employee grid for operator login =====
+// ===== v3.42 20 employees visible at once: 5 x 4 =====
 function applyOperatorUserGrid(){
   const grid=document.querySelector('.userGrid');
   if(!grid)return;
 
-  let style=byId('operatorUserGridStyleV341');
+  const loginBox=grid.closest('.loginBox');
+  if(loginBox)loginBox.classList.add('operatorLoginCompactV342');
+
+  let style=byId('operatorUserGridStyleV342');
   if(!style){
     style=document.createElement('style');
-    style.id='operatorUserGridStyleV341';
+    style.id='operatorUserGridStyleV342';
     style.textContent=
-      '.userGrid.operatorUserGridV341{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important;margin:14px 0 10px!important;}'
-      +'.userGrid.operatorUserGridV341 .userCard{display:flex!important;width:100%!important;aspect-ratio:1/1!important;min-height:105px!important;margin:0!important;padding:12px!important;border:1px solid #d8e0e9!important;border-radius:15px!important;background:#fff!important;color:#1c2a3a!important;align-items:center!important;justify-content:center!important;text-align:center!important;box-shadow:0 3px 10px rgba(20,45,80,.04)!important;overflow:hidden!important;}'
-      +'.userGrid.operatorUserGridV341 .userCard b{font-size:14px!important;line-height:1.25!important;display:-webkit-box!important;-webkit-line-clamp:3!important;-webkit-box-orient:vertical!important;overflow:hidden!important;word-break:break-word!important;}'
-      +'.userGrid.operatorUserGridV341 .userCard span{display:none!important;}'
-      +'.userGrid.operatorUserGridV341 .userCard.selected{border-color:#1263b6!important;background:#eef6ff!important;box-shadow:0 0 0 2px rgba(18,99,182,.10)!important;}'
-      +'.userGrid.operatorUserGridV341 .userCard:active{transform:scale(.98)!important;}'
-      +'@media(max-width:760px){.userGrid.operatorUserGridV341{grid-template-columns:repeat(3,minmax(0,1fr))!important}.userGrid.operatorUserGridV341 .userCard{min-height:96px!important}.userGrid.operatorUserGridV341 .userCard b{font-size:13px!important}}'
-      +'@media(max-width:500px){.userGrid.operatorUserGridV341{grid-template-columns:repeat(2,minmax(0,1fr))!important}.userGrid.operatorUserGridV341 .userCard{min-height:92px!important}}';
+      '.operatorLoginCompactV342{width:min(1080px,100%)!important;max-width:1080px!important;margin:0 auto!important;}'
+      +'.operatorLoginCompactV342 .contentHead{margin-bottom:5px!important;}'
+      +'.operatorLoginCompactV342 .contentHead .h1{font-size:23px!important;margin-bottom:3px!important;}'
+      +'.operatorLoginCompactV342 .contentHead p{font-size:11px!important;line-height:1.25!important;margin:0!important;}'
+      +'.operatorLoginCompactV342 .right .btn{height:38px!important;padding:0 12px!important;}'
+      +'.userGrid.operatorUserGridV342{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:7px!important;margin:8px 0 8px!important;}'
+      +'.userGrid.operatorUserGridV342 .userCard{display:flex!important;width:100%!important;height:72px!important;min-height:72px!important;max-height:72px!important;margin:0!important;padding:6px 7px!important;border:1px solid #d8e0e9!important;border-radius:11px!important;background:#fff!important;color:#1c2a3a!important;align-items:center!important;justify-content:center!important;text-align:center!important;box-shadow:0 2px 7px rgba(20,45,80,.035)!important;overflow:hidden!important;}'
+      +'.userGrid.operatorUserGridV342 .userCard b{font-size:12px!important;line-height:1.18!important;font-weight:800!important;display:-webkit-box!important;-webkit-line-clamp:3!important;-webkit-box-orient:vertical!important;overflow:hidden!important;word-break:break-word!important;}'
+      +'.userGrid.operatorUserGridV342 .userCard span{display:none!important;}'
+      +'.userGrid.operatorUserGridV342 .userCard.selected{border:2px solid #1263b6!important;background:#eef6ff!important;box-shadow:0 0 0 1px rgba(18,99,182,.08)!important;}'
+      +'.userGrid.operatorUserGridV342 .userCard:active{transform:scale(.98)!important;}'
+      +'.operatorLoginCompactV342 .pinLoginPanel{display:grid!important;grid-template-columns:minmax(0,1fr) 255px!important;gap:8px!important;margin-top:6px!important;align-items:stretch!important;}'
+      +'.operatorLoginCompactV342 .pinInfo{padding:10px 12px!important;}'
+      +'.operatorLoginCompactV342 .pinSelected{font-size:16px!important;margin-bottom:3px!important;}'
+      +'.operatorLoginCompactV342 .pinHint{font-size:10px!important;line-height:1.25!important;}'
+      +'.operatorLoginCompactV342 .pinDisplay{height:42px!important;margin-top:7px!important;font-size:23px!important;letter-spacing:9px!important;border-radius:10px!important;}'
+      +'.operatorLoginCompactV342 .pinCounter{font-size:10px!important;margin-top:3px!important;}'
+      +'.operatorLoginCompactV342 .pinLoginButton{height:40px!important;margin-top:6px!important;font-size:12px!important;}'
+      +'.operatorLoginCompactV342 .pinPad{padding:7px!important;gap:5px!important;}'
+      +'.operatorLoginCompactV342 .pinKey{height:34px!important;border-radius:8px!important;font-size:16px!important;}'
+      +'.operatorLoginCompactV342 .pinKey.action,.operatorLoginCompactV342 .pinKey.clear{font-size:10px!important;}'
+      +'@media(max-width:700px){.userGrid.operatorUserGridV342{grid-template-columns:repeat(4,minmax(0,1fr))!important}.userGrid.operatorUserGridV342 .userCard{height:68px!important;min-height:68px!important;max-height:68px!important}.operatorLoginCompactV342 .pinLoginPanel{grid-template-columns:1fr 220px!important}}'
+      +'@media(max-width:540px){.userGrid.operatorUserGridV342{grid-template-columns:repeat(3,minmax(0,1fr))!important}.operatorLoginCompactV342 .pinLoginPanel{grid-template-columns:1fr!important}}';
     document.head.appendChild(style);
   }
 
-  // На случай обновления с v3.39/v3.40 убираем старую динамическую сетку,
-  // а штатные карточки обязательно возвращаем.
   const oldGrid=byId('operatorUserGridV339');
   if(oldGrid)oldGrid.remove();
   document.querySelectorAll('.operatorUserGridHintV339').forEach(function(x){x.remove();});
 
-  grid.classList.add('operatorUserGridV341');
+  grid.classList.remove('operatorUserGridV341');
+  grid.classList.add('operatorUserGridV342');
   grid.style.display='grid';
 
   Array.from(grid.querySelectorAll('.userCard')).forEach(function(card){
@@ -2728,9 +2745,9 @@ function applyOperatorUserGrid(){
   });
 }
 
-const __showUserLoginV341=showUserLogin;
+const __showUserLoginV342=showUserLogin;
 showUserLogin=function(role,push=true){
-  __showUserLoginV341(role,push);
+  __showUserLoginV342(role,push);
   if(role==='OPERATOR')applyOperatorUserGrid();
 };
 
