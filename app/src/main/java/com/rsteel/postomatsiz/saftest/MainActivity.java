@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.31-standard-classic-ui-weekly-current-period';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.32-standard-classic-ui-simple-issue-reports';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -202,8 +202,8 @@ adminReports=function(){
   `<div class="betaBar">● ДЕМО-РЕЖИМ: реальные ячейки не открываются. Отчёты и backup сохраняются физически через штатную папку Android.</div>
   <div class="reportGrid">
    <div class="reportCard"><h3>Папка хранения</h3><p>Один раз выберите <b>Documents</b> или существующую папку <b>Postomat_SIZ</b>. Приложение будет использовать подпапки Reports и Backup.</p><div class="reportStatus ${nativeStorageAvailable()?'ok':'internal'}" style="margin-top:12px">${esc(nativeStorageLabel())}</div><button id="chooseStorageRoot" class="btn outline block" style="margin-top:12px">ВЫБРАТЬ ПАПКУ ХРАНЕНИЯ</button></div>
-   <div class="reportCard"><h3>Еженедельный отчёт</h3><p>Ключевые показатели → расход по СИЗ → требует внимания → выдачи → пополнения.</p><div class="field" style="margin-top:12px"><label>Неделя</label><select id="reportWeek" class="select">${weekOptions}</select></div><div style="display:grid;gap:8px"><button id="previewWeekReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeWeekReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="weeklyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendWeekReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ НА EMAIL</button></div>
-   <div class="reportCard"><h3>Ежемесячный отчёт</h3><p>Ключевые показатели → расход → сотрудники → отклонения → выдачи → пополнения → корректировки.</p><div class="field" style="margin-top:12px"><label>Месяц</label><select id="reportMonth" class="select">${monthOptions}</select></div><div style="display:grid;gap:8px"><button id="previewMonthReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="monthlyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendMonthReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ НА EMAIL</button></div>
+   <div class="reportCard"><h3>Еженедельный отчёт</h3><p>Журнал фактических выдач СИЗ за выбранную неделю.</p><div class="field" style="margin-top:12px"><label>Неделя</label><select id="reportWeek" class="select">${weekOptions}</select></div><div style="display:grid;gap:8px"><button id="previewWeekReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeWeekReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="weeklyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendWeekReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ НА EMAIL</button></div>
+   <div class="reportCard"><h3>Ежемесячный отчёт</h3><p>Журнал фактических выдач СИЗ за выбранный месяц.</p><div class="field" style="margin-top:12px"><label>Месяц</label><select id="reportMonth" class="select">${monthOptions}</select></div><div style="display:grid;gap:8px"><button id="previewMonthReport" class="btn outline block">ПРЕДПРОСМОТР</button><button id="makeReport" class="btn primary block">СФОРМИРОВАТЬ В АРХИВ</button></div><div class="field" style="margin-top:14px"><label>Email</label><input id="monthlyReportEmail" class="input" data-vk="latin" value="" autocomplete="off"></div><button id="sendMonthReportEmail" class="btn primary block">ОТПРАВИТЬ ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ НА EMAIL</button></div>
    <div class="reportCard"><h3>Резервные копии</h3><p>Backup сохраняется физическим файлом в выбранную папку <b>Postomat_SIZ/Backup</b>.</p><div class="reportStatus ${lastBackup&&lastBackup.storage==='DEVICE_FILE'?'ok':'internal'}">Последний: ${last}${lastBackupPath}</div><button id="backupNow" class="btn green block" style="margin-top:12px">СОЗДАТЬ BACKUP В ПАМЯТИ ПЛАНШЕТА</button><div class="fieldRow" style="margin-top:12px"><div class="field"><label>Backup каждые, дней</label><input id="backupDays" class="input" data-vk="number" value="${db.settings.backupEveryDays||7}"></div><div class="field"><label>Хранить недель</label><input id="backupWeeks" class="input" data-vk="number" value="${db.settings.backupRetentionWeeks||12}"></div></div><div class="field"><label>Хранить месячные отчёты, месяцев</label><input id="reportMonthsKeep" class="input" data-vk="number" value="${db.settings.reportRetentionMonths||12}"></div><button id="saveArchiveSettings" class="btn outline block">СОХРАНИТЬ НАСТРОЙКИ</button></div>
   </div>
   <div class="sectionLabel">Архив сформированных отчётов</div>${reports||'<div class="empty">Архив пока пуст. Выберите период и нажмите «Сформировать в архив».</div>'}
@@ -2114,6 +2114,183 @@ reportPreviewHtml=function(type,key){
     return base.slice(0,start)+movement+issued+rest;
   }
   return base;
+};
+
+""";
+    }
+
+
+    private String simpleIssueReportsPatchScript() {
+        return """
+
+// ===== v3.32 simple weekly/monthly issue reports =====
+function simpleIssueReportTitle(type){
+  return type==='weekly'?'ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ ПО ВЫДАЧЕ СИЗ':'ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ ПО ВЫДАЧЕ СИЗ';
+}
+
+function simpleIssueRows(type,key){
+  const d=calcReportData(type,key);
+  const rows=d.issues.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts)}).map(function(x){
+    const dt=new Date(x.ts);
+    const cellName=(cell(x.cellId)&&cell(x.cellId).name)?cell(x.cellId).name:('№'+x.cellId);
+    return {
+      date:reportFmtDate(dt),
+      time:pad2(dt.getHours())+':'+pad2(dt.getMinutes()),
+      cell:cellName,
+      ppe:x.ppeName||x.ppeId||'—',
+      employee:x.userName||x.userId||'—',
+      qty:Number(x.qty||0)
+    };
+  });
+  return {d:d,rows:rows};
+}
+
+buildOneSheetXlsx=function(type,key){
+  const pack=simpleIssueRows(type,key);
+  const d=pack.d,items=pack.rows;
+  const totalQty=items.reduce(function(s,x){return s+x.qty},0);
+  const rows=[];
+
+  rows.push([{v:simpleIssueReportTitle(type),s:1},{},{},{},{},{}]);
+  rows.push([{v:'Период: '+d.p.label+'   •   Сформирован: '+reportFmtDateTime(new Date()),s:2},{},{},{},{},{}]);
+  rows.push([{v:'Операций выдачи: '+items.length+'   •   Выдано всего: '+totalQty+' шт.',s:3},{},{},{},{},{}]);
+  rows.push([
+    {v:'Дата',s:4},
+    {v:'Время',s:4},
+    {v:'Ячейка',s:4},
+    {v:'Номенклатура',s:4},
+    {v:'Сотрудник',s:4},
+    {v:'Выдано',s:4}
+  ]);
+
+  if(items.length){
+    items.forEach(function(x){
+      rows.push([
+        {v:x.date,s:5},
+        {v:x.time,s:6},
+        {v:x.cell,s:5},
+        {v:x.ppe,s:5},
+        {v:x.employee,s:5},
+        {v:x.qty,s:7}
+      ]);
+    });
+    rows.push([
+      {v:'ИТОГО',s:8},
+      {v:'',s:8},
+      {v:'',s:8},
+      {v:'',s:8},
+      {v:'',s:8},
+      {v:totalQty,s:9}
+    ]);
+  }else{
+    rows.push([{v:'За выбранный период выдач СИЗ не было',s:10},{},{},{},{},{}]);
+  }
+
+  let rr='';
+  rows.forEach(function(row,ri){
+    let cc='';
+    for(let ci=0;ci<6;ci++){
+      const x=row[ci]||{v:null,s:0};
+      cc+=cellXml(x.v,colName(ci+1)+(ri+1),x.s||0);
+    }
+    let ht='';
+    if(ri===0)ht=' ht="30" customHeight="1"';
+    else if(ri===3)ht=' ht="28" customHeight="1"';
+    rr+='<row r="'+(ri+1)+'"'+ht+'>'+cc+'</row>';
+  });
+
+  const merges=items.length
+    ?'<mergeCells count="3"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/></mergeCells>'
+    :'<mergeCells count="4"><mergeCell ref="A1:F1"/><mergeCell ref="A2:F2"/><mergeCell ref="A3:F3"/><mergeCell ref="A5:F5"/></mergeCells>';
+
+  const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+    +'<cols>'
+      +'<col min="1" max="1" width="14" customWidth="1"/>'
+      +'<col min="2" max="2" width="10" customWidth="1"/>'
+      +'<col min="3" max="3" width="16" customWidth="1"/>'
+      +'<col min="4" max="4" width="34" customWidth="1"/>'
+      +'<col min="5" max="5" width="28" customWidth="1"/>'
+      +'<col min="6" max="6" width="12" customWidth="1"/>'
+    +'</cols>'
+    +'<sheetData>'+rr+'</sheetData>'+merges
+    +'<pageMargins left="0.35" right="0.35" top="0.45" bottom="0.45" header="0.2" footer="0.2"/>'
+    +'<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0" paperSize="9"/>'
+    +'</worksheet>';
+
+  const ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
+  const rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  const wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Выдачи СИЗ" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  const wbr='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+
+  const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<fonts count="5">'
+      +'<font><sz val="10"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+      +'<font><i/><sz val="10"/><color rgb="FF44546A"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="11"/><color rgb="FF17365D"/><name val="Calibri"/></font>'
+    +'</fonts>'
+    +'<fills count="6">'
+      +'<fill><patternFill patternType="none"/></fill>'
+      +'<fill><patternFill patternType="gray125"/></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FF17365D"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFD9EAF7"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FF5B9BD5"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/></patternFill></fill>'
+    +'</fills>'
+    +'<borders count="2"><border/><border>'
+      +'<left style="thin"><color rgb="FFD9E1F2"/></left><right style="thin"><color rgb="FFD9E1F2"/></right>'
+      +'<top style="thin"><color rgb="FFD9E1F2"/></top><bottom style="thin"><color rgb="FFD9E1F2"/></bottom>'
+    +'</border></borders>'
+    +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    +'<cellXfs count="11">'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      +'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="4" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="4" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+    +'</cellXfs>'
+    +'</styleSheet>';
+
+  return zipStore([
+    {name:'[Content_Types].xml',text:ct},
+    {name:'_rels/.rels',text:rels},
+    {name:'xl/workbook.xml',text:wb},
+    {name:'xl/_rels/workbook.xml.rels',text:wbr},
+    {name:'xl/styles.xml',text:styles},
+    {name:'xl/worksheets/sheet1.xml',text:sheet}
+  ]);
+};
+
+reportPreviewHtml=function(type,key){
+  const pack=simpleIssueRows(type,key);
+  const d=pack.d,items=pack.rows;
+  const totalQty=items.reduce(function(s,x){return s+x.qty},0);
+  const body=items.length
+    ?items.map(function(x){
+      return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.time)+'</td><td>'+esc(x.cell)+'</td><td>'+esc(x.ppe)+'</td><td>'+esc(x.employee)+'</td><td>'+x.qty+'</td></tr>';
+    }).join('')
+    :'<tr><td colspan="6">За выбранный период выдач СИЗ не было</td></tr>';
+
+  return '<div class="reportSheet">'
+    +'<div class="reportTitle">'+esc(simpleIssueReportTitle(type))+'</div>'
+    +'<div class="reportSub">Период: '+esc(d.p.label)+' • Сформирован: '+esc(reportFmtDateTime(new Date()))+'</div>'
+    +'<div class="reportSection">Операций выдачи: '+items.length+' • Выдано всего: '+totalQty+' шт.</div>'
+    +'<div class="reportTableWrap"><table class="reportTable"><thead><tr>'
+    +'<th>Дата</th><th>Время</th><th>Ячейка</th><th>Номенклатура</th><th>Сотрудник</th><th>Выдано</th>'
+    +'</tr></thead><tbody>'+body
+    +(items.length?'<tr><td><b>ИТОГО</b></td><td></td><td></td><td></td><td></td><td><b>'+totalQty+'</b></td></tr>':'')
+    +'</tbody></table></div>'
+    +'</div>';
 };
 
 """;
