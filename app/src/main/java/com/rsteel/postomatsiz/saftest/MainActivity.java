@@ -3423,7 +3423,7 @@ apiLogin=async function(address,password){
   if(typeof NativeStore==='undefined'||typeof NativeStore.postomatLogin!=='function'){
     throw new Error('Нативный модуль связи с постоматом недоступен');
   }
-  const base=String(address||'').trim().replace(/\/+$/,'');
+  const base=String(address||'').trim().replace(/\\/+$/,'');
   if(!base)throw new Error('Укажите адрес контроллера');
   const data=rcParseNativeJsonV347(
     NativeStore.postomatLogin(base,String(password||'')),
