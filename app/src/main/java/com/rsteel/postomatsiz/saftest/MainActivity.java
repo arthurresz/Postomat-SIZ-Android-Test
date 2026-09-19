@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.37-standard-classic-ui-20-cells-users';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.38-standard-classic-ui-warehouse-reports';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -2505,6 +2505,185 @@ confirmIssue=function(){
     console.error('initialCatalogV337',e);
   }
 })();
+
+""";
+    }
+
+
+    private String warehouseReportsPatchScript() {
+        return """
+
+// ===== v3.38 reports available in warehouse role =====
+const __workspaceV338=workspace;
+workspace=function(role,active,body){
+  if(role!=='WAREHOUSE')return __workspaceV338(role,active,body);
+  const nav=[
+    ['replenish','Восполнение'],
+    ['revision','Ревизия'],
+    ['history','История'],
+    ['reports','Отчёты']
+  ];
+  return '<div class="workspace"><aside class="sidebar">'
+    +'<div class="profile"><b>'+esc(session.user&&session.user.name?session.user.name:'')+'</b><span>Склад</span></div>'
+    +nav.map(function(n){return '<button class="navbtn '+(n[0]===active?'active':'')+'" data-nav="'+n[0]+'">'+n[1]+'</button>';}).join('')
+    +'</aside><main class="content">'+body+'</main></div>';
+};
+
+function warehouseReportsBody(){
+  ensureArchive();
+  ensureWarehouseData();
+
+  const months=reportMonths();
+  const weeks=reportWeeks();
+  const currentMonth=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
+  const currentWeek=weekKeyFromStart(weekBoundsFromDate(new Date()).start);
+  const mSel=window.__whReportMonth||currentMonth;
+  const wSel=window.__whReportWeek||currentWeek;
+  const mail=String(db.settings.warehouseReportEmail||'');
+
+  const monthOptions=months.map(function(k){
+    return '<option value="'+esc(k)+'" '+(k===mSel?'selected':'')+'>'+esc(k)+'</option>';
+  }).join('');
+  const weekOptions=weeks.map(function(k){
+    return '<option value="'+esc(k)+'" '+(k===wSel?'selected':'')+'>'+esc(weekLabel(k))+'</option>';
+  }).join('');
+
+  const reports=(db.archive&&Array.isArray(db.archive.reports)?db.archive.reports:[])
+    .slice()
+    .sort(function(a,b){return new Date(b.createdAt)-new Date(a.createdAt);})
+    .slice(0,10)
+    .map(function(r){
+      const title=(r.type==='weekly'?'Еженедельный':'Ежемесячный')+' • '+esc(r.label||r.key||'');
+      return '<button class="whReportArchiveItem" data-wh-report-type="'+esc(r.type||'weekly')+'" data-wh-report-key="'+esc(r.key||'')+'">'
+        +'<div><b>'+title+'</b><span>'+esc(fmtDate(r.createdAt))+'</span></div>'
+        +'<span class="whReportOpen">›</span>'
+        +'</button>';
+    }).join('');
+
+  let h='';
+  h+='<style>';
+  h+='.whReportsHero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}';
+  h+='.whReportsHero .h1{margin-bottom:4px}';
+  h+='.whReportsGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:18px}';
+  h+='.whReportCard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 4px 14px rgba(20,45,80,.04)}';
+  h+='.whReportCard h3{margin:0 0 5px;font-size:18px}.whReportCard p{margin:0 0 14px;color:var(--muted);font-size:12px;line-height:1.45}';
+  h+='.whReportActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}';
+  h+='.whReportMail{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:12px}.whReportMail .field{margin:0}';
+  h+='.whReportInfo{background:#eef5ff;border:1px solid #cfe0f5;border-radius:14px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:#35506f}';
+  h+='.whPreviewBox{margin-top:16px}';
+  h+='.whReportArchive{display:grid;gap:8px}';
+  h+='.whReportArchiveItem{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 14px;color:inherit;font:inherit;cursor:pointer}';
+  h+='.whReportArchiveItem b{display:block;font-size:13px}.whReportArchiveItem span{display:block;font-size:11px;color:var(--muted);margin-top:3px}.whReportOpen{font-size:24px!important;margin:0!important}';
+  h+='@media(max-width:700px){.whReportsGrid{grid-template-columns:1fr}.whReportMail{grid-template-columns:1fr}.whReportActions{grid-template-columns:1fr}}';
+  h+='</style>';
+
+  h+='<div class="whReportsHero"><div><div class="h1">Отчёты</div><p>Выдача расходных материалов складом сотрудникам.</p></div></div>';
+  h+='<div class="whReportInfo">Отчёты формируются по фактическим операциям склада. Быстрый <b>«Отчёт о восполнении»</b> остаётся в разделе «Восполнение».</div>';
+
+  h+='<div class="whReportsGrid">';
+  h+='<div class="whReportCard">';
+  h+='<h3>Еженедельный отчёт</h3><p>Дата, время, ячейка, номенклатура, сотрудник и количество выданного за выбранную неделю.</p>';
+  h+='<div class="field"><label>Неделя</label><select id="whReportWeek" class="select">'+weekOptions+'</select></div>';
+  h+='<div class="whReportActions"><button id="whPreviewWeek" class="btn outline block">ПРЕДПРОСМОТР</button><button id="whMakeWeek" class="btn primary block">СФОРМИРОВАТЬ</button></div>';
+  h+='<div class="whReportMail"><div class="field"><label>Email получателя</label><input id="whWeekEmail" class="input" data-vk="latin" inputmode="email" value="'+esc(mail)+'" autocomplete="off"></div><button id="whSendWeek" class="btn green">ОТПРАВИТЬ</button></div>';
+  h+='</div>';
+
+  h+='<div class="whReportCard">';
+  h+='<h3>Ежемесячный отчёт</h3><p>Та же форма отчёта, но за выбранный календарный месяц.</p>';
+  h+='<div class="field"><label>Месяц</label><select id="whReportMonth" class="select">'+monthOptions+'</select></div>';
+  h+='<div class="whReportActions"><button id="whPreviewMonth" class="btn outline block">ПРЕДПРОСМОТР</button><button id="whMakeMonth" class="btn primary block">СФОРМИРОВАТЬ</button></div>';
+  h+='<div class="whReportMail"><div class="field"><label>Email получателя</label><input id="whMonthEmail" class="input" data-vk="latin" inputmode="email" value="'+esc(mail)+'" autocomplete="off"></div><button id="whSendMonth" class="btn green">ОТПРАВИТЬ</button></div>';
+  h+='</div>';
+  h+='</div>';
+
+  h+='<div id="whReportPreview" class="whPreviewBox"></div>';
+  h+='<div class="sectionLabel">Последние сформированные отчёты</div>';
+  h+='<div class="whReportArchive">'+(reports||'<div class="empty">Сформированных отчётов пока нет</div>')+'</div>';
+  return h;
+}
+
+function whShowReportPreview(type,key){
+  const box=byId('whReportPreview');
+  if(!box)return;
+  try{
+    box.innerHTML=reportPreviewHtml(type,key);
+    box.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){
+    console.error('warehouse report preview',e);
+    toast('Не удалось открыть предпросмотр отчёта','error');
+  }
+}
+
+function wireWarehouseReports(){
+  const week=byId('whReportWeek'),month=byId('whReportMonth');
+  if(week)week.onchange=function(){window.__whReportWeek=week.value;};
+  if(month)month.onchange=function(){window.__whReportMonth=month.value;};
+
+  if(byId('whPreviewWeek'))byId('whPreviewWeek').onclick=function(){
+    const key=byId('whReportWeek').value;
+    window.__whReportWeek=key;
+    whShowReportPreview('weekly',key);
+  };
+  if(byId('whPreviewMonth'))byId('whPreviewMonth').onclick=function(){
+    const key=byId('whReportMonth').value;
+    window.__whReportMonth=key;
+    whShowReportPreview('monthly',key);
+  };
+
+  if(byId('whMakeWeek'))byId('whMakeWeek').onclick=function(){
+    const key=byId('whReportWeek').value;
+    window.__whReportWeek=key;
+    if(!nativeStorageAvailable()){
+      toast('Сначала настройте папку хранения в Администрирование → Отчёты','error');
+      return;
+    }
+    saveWeeklyReport(key,false);
+    toast('Еженедельный отчёт сформирован','ok');
+    showWarehouse('reports',false);
+  };
+  if(byId('whMakeMonth'))byId('whMakeMonth').onclick=function(){
+    const key=byId('whReportMonth').value;
+    window.__whReportMonth=key;
+    if(!nativeStorageAvailable()){
+      toast('Сначала настройте папку хранения в Администрирование → Отчёты','error');
+      return;
+    }
+    saveMonthlyReport(key,false);
+    toast('Ежемесячный отчёт сформирован','ok');
+    showWarehouse('reports',false);
+  };
+
+  if(byId('whSendWeek'))byId('whSendWeek').onclick=function(){
+    const key=byId('whReportWeek').value;
+    const email=String(byId('whWeekEmail').value||'').trim();
+    sendReportByEmail('weekly',key,email);
+  };
+  if(byId('whSendMonth'))byId('whSendMonth').onclick=function(){
+    const key=byId('whReportMonth').value;
+    const email=String(byId('whMonthEmail').value||'').trim();
+    sendReportByEmail('monthly',key,email);
+  };
+
+  document.querySelectorAll('[data-wh-report-type]').forEach(function(b){
+    b.onclick=function(){whShowReportPreview(b.dataset.whReportType,b.dataset.whReportKey);};
+  });
+
+  enableNativeMobileKeyboard(document);
+}
+
+const __showWarehouseV338=showWarehouse;
+showWarehouse=function(tab='replenish',push=true){
+  if(tab!=='reports')return __showWarehouseV338(tab,push);
+
+  ensureWarehouseData();
+  ensureArchive();
+  setUi({screen:'warehouse',role:'WAREHOUSE',tab:'reports'},push);
+  render(workspace('WAREHOUSE','reports',warehouseReportsBody()));
+  wireNav('WAREHOUSE');
+  wireWarehouseReports();
+  try{applyWarehouseNavMode('reports');}catch(e){}
+  setTimeout(function(){try{applyWarehouseNavMode('reports');}catch(e){}},0);
+};
 
 """;
     }
