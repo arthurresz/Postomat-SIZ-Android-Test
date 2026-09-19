@@ -119,6 +119,7 @@ public class MainActivity extends Activity {
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
             if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + page.substring(scriptEnd);
+            page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
         }
@@ -2755,7 +2756,7 @@ confirmIssue=function(){
                 send.putExtra(Intent.EXTRA_SUBJECT, subject);
                 send.putExtra(Intent.EXTRA_TEXT, body);
                 send.putExtra(Intent.EXTRA_STREAM, target);
-                send.setClipData(ClipData.newUri(getContentResolver(), "Отчёт СИЗ", target));
+                send.setClipData(ClipData.newUri(getContentResolver(), "Отчёт расходных материалов", target));
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 if (send.resolveActivity(getPackageManager()) == null) return "NO_APP";
                 runOnUiThread(() -> startActivity(Intent.createChooser(send, "Отправить отчёт")));
