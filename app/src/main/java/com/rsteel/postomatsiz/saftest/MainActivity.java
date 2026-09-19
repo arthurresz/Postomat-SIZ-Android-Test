@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.25-standard-classic-ui-background-mail';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.26-standard-classic-ui-readable-reports';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -1461,6 +1461,294 @@ sendWarehouseReplenishmentReport=function(){
     const body='Актуальный отчёт о восполнении СИЗ.\\nЯчеек: '+groups.length+'\\nПозиций: '+totalPositions+'\\nЕдиниц добавить: '+totalQty+'\\n\\nПодробный XLSX-файл приложен к письму.';
     return smtpQueueAttachment(bytes,fileName,email,subject,body,'warehouse');
   }catch(e){toast('Ошибка формирования отчёта: '+(e.message||e),'error');return false}
+};
+
+""";
+    }
+
+
+    private String readableReportPatchScript() {
+        return """
+
+// ===== v3.26 readable XLSX reports =====
+function rrRow(rows,vals,style){
+  const styles=Array.isArray(style)?style:null;
+  rows.push(Array.from({length:9},function(_,i){
+    return {v:i<vals.length?vals[i]:null,s:styles?(styles[i]||0):(style||0)};
+  }));
+}
+function rrMergeRow(rows,merges,title,style){
+  const r=rows.length+1;
+  rrRow(rows,[title],style);
+  merges.push('A'+r+':I'+r);
+}
+function rrKpi(rows,merges,items){
+  for(let block=0;block<2;block++){
+    const base=block*3;
+    const labelRow=rows.length+1;
+    const valueRow=labelRow+1;
+    const labels=[],values=[];
+    for(let i=0;i<3;i++){
+      const item=items[base+i]||['',''];
+      labels[i*3]=item[0];
+      values[i*3]=item[1];
+      const from=colName(i*3+1),to=colName(i*3+3);
+      merges.push(from+labelRow+':'+to+labelRow);
+      merges.push(from+valueRow+':'+to+valueRow);
+    }
+    rrRow(rows,labels,5);
+    rrRow(rows,values,6);
+  }
+}
+function rrCurrentAttention(){
+  const today=new Date();
+  const out=[];
+  db.assignments.filter(function(a){return a.active&&Number(a.stock||0)<=Number(a.min||0)}).forEach(function(a){
+    const e=employee(a.employeeId),pp=ppe(a.ppeId);
+    const late=(db.tasks||[]).find(function(t){
+      return t.status==='OPEN'&&t.assignmentId===a.id&&new Date(t.due)<today;
+    });
+    const need=Math.max(0,Number(a.target||0)-Number(a.stock||0));
+    const status=late?'ПРОСРОЧЕНО':Number(a.stock||0)===0?'КРИТИЧНО':'ПОПОЛНИТЬ';
+    const note=late?('Срок: '+reportFmtDate(late.due)):(Number(a.stock||0)===0?'Нет в наличии':'Остаток достиг Min');
+    out.push({
+      status:status,cell:'№'+a.cellId,employee:e?e.name:'—',ppe:pp?pp.name:a.ppeId,
+      stock:Number(a.stock||0),min:Number(a.min||0),max:Number(a.target||0),need:need,note:note
+    });
+  });
+  const order={ПРОСРОЧЕНО:0,КРИТИЧНО:1,ПОПОЛНИТЬ:2};
+  out.sort(function(a,b){
+    const s=(order[a.status]||0)-(order[b.status]||0);
+    if(s!==0)return s;
+    const ca=parseInt(String(a.cell).replace(/\D/g,''),10)||0;
+    const cb=parseInt(String(b.cell).replace(/\D/g,''),10)||0;
+    return ca-cb||String(a.ppe).localeCompare(String(b.ppe),'ru');
+  });
+  return out;
+}
+
+styledSheetXml=function(rows,merges){
+  merges=merges||[];
+  let rr='';
+  rows.forEach(function(row,ri){
+    let cc='';
+    for(let ci=0;ci<9;ci++){
+      const cell=row[ci]||{v:null,s:0};
+      cc+=cellXml(cell.v,colName(ci+1)+(ri+1),cell.s||0);
+    }
+    let ht='';
+    if(ri===0)ht=' ht="30" customHeight="1"';
+    else if(ri===1)ht=' ht="22" customHeight="1"';
+    else if(row.some(function(x){return x&&x.s===5}))ht=' ht="28" customHeight="1"';
+    else if(row.some(function(x){return x&&x.s===6}))ht=' ht="32" customHeight="1"';
+    else if(row.some(function(x){return x&&x.s===4}))ht=' ht="30" customHeight="1"';
+    rr+='<row r="'+(ri+1)+'"'+ht+'>'+cc+'</row>';
+  });
+  const mergeXml=merges.length?'<mergeCells count="'+merges.length+'">'+merges.map(function(x){return '<mergeCell ref="'+x+'"/>'}).join('')+'</mergeCells>':'';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'
+    +'<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+    +'<cols>'
+    +'<col min="1" max="1" width="18" customWidth="1"/>'
+    +'<col min="2" max="2" width="13" customWidth="1"/>'
+    +'<col min="3" max="3" width="24" customWidth="1"/>'
+    +'<col min="4" max="4" width="28" customWidth="1"/>'
+    +'<col min="5" max="8" width="13" customWidth="1"/>'
+    +'<col min="9" max="9" width="24" customWidth="1"/>'
+    +'</cols>'
+    +'<sheetData>'+rr+'</sheetData>'+mergeXml
+    +'<pageMargins left="0.3" right="0.3" top="0.45" bottom="0.45" header="0.2" footer="0.2"/>'
+    +'<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0" paperSize="9"/>'
+    +'</worksheet>';
+};
+
+buildOneSheetXlsx=function(type,key){
+  const d=calcReportData(type,key),rows=[],merges=[];
+  const attention=rrCurrentAttention();
+  const needQty=attention.reduce(function(s,x){return s+x.need},0);
+  const people=new Set(d.issues.map(function(x){return x.userId||x.userName})).size;
+  const critical=attention.filter(function(x){return x.status==='КРИТИЧНО'||x.status==='ПРОСРОЧЕНО'}).length;
+
+  rrMergeRow(rows,merges,d.p.title,1);
+  rrMergeRow(rows,merges,'Период: '+d.p.label+'   •   Сформирован: '+reportFmtDateTime(new Date()),2);
+  rrMergeRow(rows,merges,'СВОДКА',3);
+
+  const kpis=type==='weekly'
+    ?[
+      ['Выдано, шт.',d.totalIssued],
+      ['Сотрудников',people],
+      ['Пополнено, шт.',d.totalRepl],
+      ['Позиций к пополнению',attention.length],
+      ['Критично / просрочено',critical],
+      ['Нужно добавить, шт.',needQty]
+     ]
+    :[
+      ['Выдано, шт.',d.totalIssued],
+      ['Сотрудников',people],
+      ['Пополнено, шт.',d.totalRepl],
+      ['Отклонений',d.deviations.length],
+      ['Корректировок',d.edits.length],
+      ['Нужно добавить, шт.',needQty]
+     ];
+  rrKpi(rows,merges,kpis);
+
+  rrMergeRow(rows,merges,'1. ТРЕБУЕТ ПОПОЛНЕНИЯ',3);
+  rrRow(rows,['Статус','Ячейка','Сотрудник','СИЗ','Остаток','Min','Max','Добавить','Комментарий'],4);
+  if(attention.length){
+    attention.forEach(function(x){
+      const st=(x.status==='КРИТИЧНО'||x.status==='ПРОСРОЧЕНО')?9:8;
+      rrRow(rows,[x.status,x.cell,x.employee,x.ppe,x.stock,x.min,x.max,x.need,x.note],st);
+    });
+    rrRow(rows,['ИТОГО','','','','','','',needQty,''],11);
+  }else{
+    const r=rows.length+1;
+    rrRow(rows,['На дату формирования пополнение не требуется'],12);
+    merges.push('A'+r+':I'+r);
+  }
+
+  rrMergeRow(rows,merges,'2. ДВИЖЕНИЕ ПО ВИДАМ СИЗ',3);
+  rrRow(rows,['СИЗ','Выдано','Выдач','Сотрудников','Пополнено','Остаток','Max','Пополнить','Статус'],4);
+  const ppeNames=new Set([].concat(Object.keys(d.byPpe),Object.keys(d.replByPpe),db.ppe.filter(function(x){return x.active}).map(function(x){return x.name})));
+  const ppeRows=[];
+  Array.from(ppeNames).sort(function(a,b){return a.localeCompare(b,'ru')}).forEach(function(name){
+    const stat=d.byPpe[name]||{q:0,count:0,people:new Set()};
+    const pp=db.ppe.find(function(x){return x.name===name});
+    const as=db.assignments.filter(function(a){return a.active&&pp&&a.ppeId===pp.id});
+    const stock=as.reduce(function(s,a){return s+Number(a.stock||0)},0);
+    const target=as.reduce(function(s,a){return s+Number(a.target||0)},0);
+    const need=as.reduce(function(s,a){return s+(Number(a.stock||0)<=Number(a.min||0)?Math.max(0,Number(a.target||0)-Number(a.stock||0)):0)},0);
+    const repl=d.replByPpe[name]||0;
+    if(Number(stat.q||0)>0||Number(repl)>0||need>0){
+      ppeRows.push([name,stat.q,stat.count,stat.people.size,repl,stock,target,need,need>0?'ПОПОЛНИТЬ':'НОРМА']);
+    }
+  });
+  if(ppeRows.length){
+    ppeRows.forEach(function(x){rrRow(rows,x,x[7]>0?8:7)});
+  }else{
+    const r=rows.length+1;
+    rrRow(rows,['За период движения по СИЗ не было, пополнение не требуется'],10);
+    merges.push('A'+r+':I'+r);
+  }
+
+  let sectionNo=3;
+  if(type==='monthly'){
+    rrMergeRow(rows,merges,sectionNo+'. ВЫДАЧА ПО СОТРУДНИКАМ',3);sectionNo++;
+    rrRow(rows,['Сотрудник','Выдано, шт.','Видов СИЗ','Операций','Первая выдача','Последняя выдача','Ячейка','',''],4);
+    const empRows=Object.values(d.byEmp).sort(function(a,b){return String(a.user).localeCompare(String(b.user),'ru')});
+    if(empRows.length){
+      empRows.forEach(function(x){
+        const e=db.employees.find(function(e){return e.name===x.user});
+        const dates=x.dates.slice().sort();
+        rrRow(rows,[x.user,x.q,x.items.size,x.count,dates.length?reportFmtDate(dates[0]):'—',dates.length?reportFmtDate(dates[dates.length-1]):'—',e&&e.cellId?'№'+e.cellId:'—','',''],7);
+      });
+    }else{
+      const r=rows.length+1;rrRow(rows,['Выдач за период нет'],10);merges.push('A'+r+':I'+r);
+    }
+
+    rrMergeRow(rows,merges,sectionNo+'. ОТКЛОНЕНИЯ И КОНТРОЛЬ',3);sectionNo++;
+    rrRow(rows,['Тип','Сотрудник','СИЗ','Факт','Норма','Отклонение','Комментарий','',''],4);
+    if(d.deviations.length){
+      d.deviations.forEach(function(x){
+        const st=x[0]==='Просрочка склада'?9:x[0]==='Перерасход'?8:7;
+        rrRow(rows,x,st);
+      });
+    }else{
+      const r=rows.length+1;rrRow(rows,['Отклонений за период не зафиксировано'],12);merges.push('A'+r+':I'+r);
+    }
+  }
+
+  rrMergeRow(rows,merges,sectionNo+'. ВЫДАЧИ ЗА ПЕРИОД',3);sectionNo++;
+  rrRow(rows,['Дата','Время','Сотрудник','Ячейка','СИЗ','Было','Выдано','Осталось','Статус'],4);
+  if(d.issues.length){
+    d.issues.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts)}).forEach(function(x){
+      const dt=new Date(x.ts);
+      rrRow(rows,[reportFmtDate(dt),pad2(dt.getHours())+':'+pad2(dt.getMinutes()),x.userName,'№'+x.cellId,x.ppeName,x.before,Number(x.qty||0),x.after,x.status||'Подтверждено'],7);
+    });
+  }else{
+    const r=rows.length+1;rrRow(rows,['За выбранный период выдач не было'],10);merges.push('A'+r+':I'+r);
+  }
+
+  rrMergeRow(rows,merges,sectionNo+'. ПОПОЛНЕНИЯ ЗА ПЕРИОД',3);sectionNo++;
+  rrRow(rows,['Дата','Время','Склад','Ячейка','СИЗ','Было','Добавлено','Стало',''],4);
+  if(d.reps.length){
+    d.reps.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts)}).forEach(function(x){
+      const dt=new Date(x.ts);
+      rrRow(rows,[reportFmtDate(dt),pad2(dt.getHours())+':'+pad2(dt.getMinutes()),x.userName,'№'+x.cellId,x.ppeName,x.before,Number(x.qty||0),x.after,''],7);
+    });
+  }else{
+    const r=rows.length+1;rrRow(rows,['За выбранный период пополнений не было'],10);merges.push('A'+r+':I'+r);
+  }
+
+  if(type==='monthly'){
+    rrMergeRow(rows,merges,sectionNo+'. КОРРЕКТИРОВКИ ОСТАТКОВ',3);
+    rrRow(rows,['Дата/время','Администратор','Изменение','Было','Стало','','','',''],4);
+    if(d.edits.length){
+      d.edits.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts)}).forEach(function(x){
+        rrRow(rows,[reportFmtDateTime(x.ts),x.admin,x.action,x.before,x.after,'','','',''],7);
+      });
+    }else{
+      const r=rows.length+1;rrRow(rows,['Корректировок за период не было'],10);merges.push('A'+r+':I'+r);
+    }
+  }
+
+  const sheet=styledSheetXml(rows,merges);
+  const ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
+  const rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  const wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Отчёт" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  const wbr='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<fonts count="5">'
+      +'<font><sz val="10"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+      +'<font><i/><sz val="10"/><color rgb="FF44546A"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'
+      +'<font><b/><sz val="13"/><color rgb="FF17365D"/><name val="Calibri"/></font>'
+    +'</fonts>'
+    +'<fills count="9">'
+      +'<fill><patternFill patternType="none"/></fill>'
+      +'<fill><patternFill patternType="gray125"/></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FF17365D"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFD9EAF7"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FF5B9BD5"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFF7F9FC"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFF4CCCC"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/></patternFill></fill>'
+    +'</fills>'
+    +'<borders count="2"><border/><border>'
+      +'<left style="thin"><color rgb="FFD9E1F2"/></left>'
+      +'<right style="thin"><color rgb="FFD9E1F2"/></right>'
+      +'<top style="thin"><color rgb="FFD9E1F2"/></top>'
+      +'<bottom style="thin"><color rgb="FFD9E1F2"/></bottom>'
+    +'</border></borders>'
+    +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    +'<cellXfs count="13">'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      +'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="3" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="7" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="8" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+    +'</cellXfs>'
+    +'</styleSheet>';
+
+  return zipStore([
+    {name:'[Content_Types].xml',text:ct},
+    {name:'_rels/.rels',text:rels},
+    {name:'xl/workbook.xml',text:wb},
+    {name:'xl/_rels/workbook.xml.rels',text:wbr},
+    {name:'xl/styles.xml',text:styles},
+    {name:'xl/worksheets/sheet1.xml',text:sheet}
+  ]);
 };
 
 """;
