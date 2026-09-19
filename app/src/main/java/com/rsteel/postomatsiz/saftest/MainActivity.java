@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.28-standard-classic-ui-final-warehouse-report';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.29-standard-classic-ui-replenishment-data-fix';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + page.substring(scriptEnd);
             return page;
         }
     }
@@ -190,7 +190,7 @@ runStorageMaintenance=function(){
 
 adminReports=function(){
   ensureArchive();
-  const months=reportMonths(),weeks=reportWeeks(),mSel=window.__reportMonth||prevMonthKey(),wSel=window.__reportWeek||prevWeekKey();
+  const months=reportMonths(),weeks=reportWeeks(),mSel=window.__reportMonth||monthKey(new Date().getFullYear(),new Date().getMonth()+1),wSel=window.__reportWeek||prevWeekKey();
   const monthOptions=months.map(k=>`<option value="${k}" ${k===mSel?'selected':''}>${k}</option>`).join('');
   const weekOptions=weeks.map(k=>`<option value="${k}" ${k===wSel?'selected':''}>${weekLabel(k)}</option>`).join('');
   const reports=db.archive.reports.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(r=>`<div class="archiveItem"><div class="row"><b>${r.type==='weekly'?'Недельный':'Месячный'} отчёт ${esc(r.label||r.key)}</b><span class="badge">${r.auto?'АВТО':'РУЧНОЙ'}</span></div><div class="meta">${fmtDate(r.createdAt)} • ${esc(r.fileName||'Отчёт.xlsx')}<br>${r.storage==='DEVICE_FILE'?'Файл: '+esc(r.path||r.fileName):'Хранение: внутренний архив'}</div><div class="archiveActions"><button class="btn small primary" data-view-report="${esc(r.id||'')}">Просмотреть</button></div></div>`).join('');
@@ -1812,11 +1812,11 @@ buildOneSheetXlsx=function(type,key){
   }
 
   rrMergeRow(rows,merges,sectionNo+'. ПОПОЛНЕНИЯ ЗА ПЕРИОД',3);sectionNo++;
-  rrRow(rows,['Дата','Время','Склад','Ячейка','СИЗ','Было','Добавлено','Стало',''],4);
+  rrRow(rows,['Дата','Время','Склад','Ячейка','Сотрудник','СИЗ','Было','Добавлено','Стало'],4);
   if(d.reps.length){
     d.reps.slice().sort(function(a,b){return new Date(a.ts)-new Date(b.ts)}).forEach(function(x){
       const dt=new Date(x.ts);
-      rrRow(rows,[reportFmtDate(dt),pad2(dt.getHours())+':'+pad2(dt.getMinutes()),x.userName,'№'+x.cellId,x.ppeName,x.before,Number(x.qty||0),x.after,''],7);
+      rrRow(rows,[reportFmtDate(dt),pad2(dt.getHours())+':'+pad2(dt.getMinutes()),x.issuedBy||x.userName||'Склад','№'+x.cellId,x.recipientName||ownerOfCell(x.cellId)?.name||'—',x.ppeName,x.before,Number(x.qty||0),x.after],7);
     });
   }else{
     const r=rows.length+1;rrRow(rows,['За выбранный период пополнений не было'],10);merges.push('A'+r+':I'+r);
@@ -1919,6 +1919,85 @@ reportPreviewHtml=function(type,key){
   const end=base.indexOf(endMarker);
   if(start>=0&&end>start)return base.slice(0,start)+section+base.slice(end);
   return base+section;
+};
+
+""";
+    }
+
+
+    private String replenishmentDataFixPatchScript() {
+        return """
+
+// ===== v3.29 replenishment data consistency =====
+// Canonical warehouse queue = union of OPEN replenishment tasks and active assignments
+// currently at/below Min. This preserves partially completed OPEN tasks until Max and
+// also protects the queue/report if a task record is missing or stale.
+function warehouseNeedTasksV329(){
+  ensureWarehouseData();
+  try{syncTasks()}catch(e){console.error('syncTasks v3.29',e)}
+
+  const byAssignment=new Map();
+
+  try{
+    openTasks().forEach(function(t){
+      if(!t||!t.a||!t.a.active)return;
+      const stock=Number(t.a.stock||0),target=Number(t.a.target||0);
+      if(stock>=target)return;
+      byAssignment.set(String(t.a.id),t);
+    });
+  }catch(e){console.error('openTasks v3.29',e)}
+
+  (db.assignments||[]).filter(function(a){
+    return a&&a.active&&Number(a.stock||0)<=Number(a.min||0)&&Number(a.stock||0)<Number(a.target||0);
+  }).forEach(function(a){
+    const key=String(a.id);
+    if(byAssignment.has(key))return;
+    const existing=(db.tasks||[]).find(function(t){
+      return t.assignmentId===a.id&&t.status==='OPEN';
+    });
+    byAssignment.set(key,existing?Object.assign({},existing,{a:a}):{
+      id:'AUTO-'+a.id,
+      assignmentId:a.id,
+      cellId:a.cellId,
+      ppeId:a.ppeId,
+      created:nowIso(),
+      due:hoursFromNow(Number(a.stock||0)===0?db.settings.criticalHours:db.settings.normalHours),
+      status:'OPEN',
+      a:a
+    });
+  });
+
+  return Array.from(byAssignment.values());
+}
+
+whQueueGroups=function(){
+  const tasks=warehouseNeedTasksV329();
+  const map=new Map();
+  tasks.forEach(function(t){
+    const cid=Number(t.cellId!=null?t.cellId:t.a.cellId);
+    if(!map.has(cid))map.set(cid,[]);
+    map.get(cid).push(t);
+  });
+  return Array.from(map.entries())
+    .sort(function(a,b){return a[0]-b[0]})
+    .map(function(x){return {cellId:x[0],tasks:x[1]};});
+};
+
+routeTasks=function(){
+  const cid=currentRouteCell();
+  if(cid==null)return [];
+  const g=whQueueGroups().find(function(x){return Number(x.cellId)===Number(cid)});
+  return g?g.tasks:[];
+};
+
+// Monthly report should default to the month in which the user is working.
+// Keep the selected month when the user has explicitly chosen one.
+const __showAdminV329=showAdmin;
+showAdmin=function(tab='overview',push=true){
+  if(tab==='reports'&&!window.__reportMonth){
+    window.__reportMonth=monthKey(new Date().getFullYear(),new Date().getMonth()+1);
+  }
+  __showAdminV329(tab,push);
 };
 
 """;
