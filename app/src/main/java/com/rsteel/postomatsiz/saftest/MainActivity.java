@@ -1520,8 +1520,8 @@ function rrCurrentAttention(){
   out.sort(function(a,b){
     const s=(order[a.status]||0)-(order[b.status]||0);
     if(s!==0)return s;
-    const ca=parseInt(String(a.cell).replace(/\D/g,''),10)||0;
-    const cb=parseInt(String(b.cell).replace(/\D/g,''),10)||0;
+    const ca=parseInt(String(a.cell).replace(/\\D/g,''),10)||0;
+    const cb=parseInt(String(b.cell).replace(/\\D/g,''),10)||0;
     return ca-cb||String(a.ppe).localeCompare(String(b.ppe),'ru');
   });
   return out;
