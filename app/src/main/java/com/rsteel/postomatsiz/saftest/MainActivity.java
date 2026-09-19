@@ -115,10 +115,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.45-standard-classic-ui-qty-stepper';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.46-standard-classic-ui-operator-layout-fix';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -3283,6 +3283,120 @@ const __showOperatorV345=showOperator;
 showOperator=function(push=true){
   __showOperatorV345(push);
   applyQtyStepperV345();
+};
+
+""";
+    }
+
+
+    private String operatorLayoutFixPatchScript() {
+        return """
+
+// ===== v3.46 stable operator layout =====
+(function installOperatorLayoutFixV346(){
+  const old=byId('operatorLayoutFixStyleV346');
+  if(old)old.remove();
+
+  const s=document.createElement('style');
+  s.id='operatorLayoutFixStyleV346';
+  s.textContent=
+    '.operatorStepsV340{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin:0 0 8px!important;}'
+    +'.operatorStepV340{min-height:44px!important;padding:6px 8px!important;gap:6px!important;border-radius:10px!important;}'
+    +'.operatorStepV340 .n{width:22px!important;height:22px!important;font-size:10px!important;}'
+    +'.operatorStepV340 b{font-size:10px!important;line-height:1.1!important}.operatorStepV340 span{font-size:8px!important;line-height:1.1!important;}'
+
+    +'.issueLayout{display:grid!important;grid-template-columns:minmax(0,1fr) 240px!important;gap:12px!important;align-items:start!important;}'
+    +'.issueLayout>.cards2{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important;min-width:0!important;}'
+    +'.issueLayout .ppeCard{height:148px!important;min-height:148px!important;max-height:148px!important;padding:11px!important;border-radius:13px!important;overflow:hidden!important;}'
+    +'.issueLayout .ppeTop{gap:7px!important;}'
+    +'.issueLayout .ppeName{font-size:13px!important;line-height:1.2!important;min-height:32px!important;max-height:32px!important;-webkit-line-clamp:2!important;}'
+    +'.issueLayout .badge{font-size:8px!important;padding:4px 6px!important;max-width:66px!important;}'
+    +'.issueLayout .meta{font-size:9px!important;line-height:1.2!important;margin-top:6px!important;white-space:normal!important;overflow:visible!important;}'
+    +'.issueLayout .meta span{display:block!important;margin:2px 0!important;}'
+    +'.issueLayout .ppeCard>.sub{display:none!important;}'
+    +'.issueLayout .qtyRow{margin-top:9px!important;gap:6px!important;display:flex!important;align-items:center!important;flex-wrap:nowrap!important;}'
+    +'.issueLayout .qtyRow>span:first-child{font-size:9px!important;white-space:nowrap!important;margin-right:auto!important;}'
+    +'.issueLayout .qtyRow>.sub{font-size:9px!important;white-space:nowrap!important;margin-left:0!important;}'
+
+    +'.qtyStepperV345{grid-template-columns:32px 38px 32px!important;gap:4px!important;margin-left:0!important;flex:0 0 auto!important;}'
+    +'.qtyStepBtnV345{width:32px!important;height:32px!important;font-size:18px!important;border-radius:8px!important;}'
+    +'.qtyStepValueV345{height:32px!important;font-size:13px!important;border-radius:8px!important;}'
+
+    +'.issueLayout>.card.sticky{width:240px!important;min-width:240px!important;max-width:240px!important;padding:12px!important;border-radius:13px!important;top:6px!important;}'
+    +'.issueLayout>.card.sticky>.sub:first-child{font-size:9px!important;}'
+    +'.issueLayout .stateBig{font-size:19px!important;margin:3px 0 8px!important;}'
+    +'.issueLayout>.card.sticky .h2{font-size:13px!important;margin:0!important;}'
+    +'.issueLayout #issueSummary{min-height:50px!important;max-height:130px!important;overflow:auto!important;margin-top:5px!important;}'
+    +'.issueLayout #issueSummary .summaryLine{padding:6px 7px!important;margin-bottom:4px!important;font-size:10px!important;}'
+    +'.issueLayout #issueSummary .summaryLine b{font-size:13px!important;}'
+    +'.issueLayout #flowHint{font-size:9px!important;line-height:1.25!important;padding:8px!important;margin-top:7px!important;}'
+    +'.issueLayout #openIssue,.issueLayout #confirmIssue{height:38px!important;font-size:10px!important;margin-top:7px!important;}'
+
+    +'.operatorTakeBannerV346{grid-column:1/-1!important;background:#eef6ff;border:1px solid #bcd4ec;border-radius:11px;padding:8px 11px;margin:0 0 9px;font-size:10px;line-height:1.25;color:#264d73;}'
+    +'.operatorTakeBannerV346 b{font-size:11px;}'
+    +'.operatorTakeBannerV340{display:none!important;}'
+
+    +'@media(max-width:760px){'
+      +'.operatorStepsV340{grid-template-columns:repeat(4,minmax(0,1fr))!important;}'
+      +'.issueLayout{grid-template-columns:minmax(0,1fr) 220px!important;gap:9px!important;}'
+      +'.issueLayout>.card.sticky{width:220px!important;min-width:220px!important;max-width:220px!important;}'
+      +'.issueLayout>.cards2{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important;}'
+      +'.issueLayout .ppeCard{height:142px!important;min-height:142px!important;max-height:142px!important;padding:9px!important;}'
+      +'.issueLayout .ppeName{font-size:12px!important;}'
+    +'}'
+
+    +'@media(max-width:620px){'
+      +'.operatorStepsV340{grid-template-columns:repeat(2,minmax(0,1fr))!important;}'
+      +'.issueLayout{grid-template-columns:1fr!important;}'
+      +'.issueLayout>.card.sticky{width:auto!important;min-width:0!important;max-width:none!important;position:static!important;}'
+      +'.issueLayout>.cards2{grid-template-columns:repeat(2,minmax(0,1fr))!important;}'
+    +'}';
+  document.head.appendChild(s);
+})();
+
+lockOperatorSelectionV340=function(){
+  document.querySelectorAll('.ppeCard').forEach(function(card){
+    const inp=card.querySelector('.issueQty');
+    if(!inp)return;
+    const q=Math.max(0,Number(inp.value||0));
+    inp.disabled=true;
+
+    const stepper=card.querySelector('.qtyStepperV345');
+    if(stepper){
+      stepper.querySelectorAll('button').forEach(function(b){b.disabled=true;});
+    }
+
+    if(q>0){
+      card.classList.add('operatorSelectedCardV340');
+      card.classList.remove('operatorLockedV340');
+    }else{
+      card.classList.add('operatorLockedV340');
+      card.classList.remove('operatorSelectedCardV340');
+    }
+  });
+
+  const old=byId('operatorTakeBannerV340');
+  if(old)old.remove();
+
+  const existing=byId('operatorTakeBannerV346');
+  if(existing)existing.remove();
+
+  const layout=document.querySelector('.issueLayout');
+  if(layout){
+    const b=document.createElement('div');
+    b.id='operatorTakeBannerV346';
+    b.className='operatorTakeBannerV346';
+    b.innerHTML='<b>Заберите только выбранные позиции</b> и закройте ячейку.';
+    layout.parentNode.insertBefore(b,layout);
+  }
+};
+
+const __showOperatorV346=showOperator;
+showOperator=function(push=true){
+  __showOperatorV346(push);
+
+  const old=byId('operatorTakeBannerV346');
+  if(old&&!session.flow)old.remove();
 };
 
 """;
