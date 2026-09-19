@@ -50,7 +50,11 @@ public class MainActivity extends Activity {
     private static final String PREF_SMTP_EMAIL = "smtp_sender_email";
     private static final String PREF_SMTP_IV = "smtp_password_iv";
     private static final String PREF_SMTP_SECRET = "smtp_password_secret";
+    private static final String PREF_CONTROLLER_ADDRESS = "postomat_controller_address";
+    private static final String PREF_CONTROLLER_IV = "postomat_controller_password_iv";
+    private static final String PREF_CONTROLLER_SECRET = "postomat_controller_password_secret";
     private static final String SMTP_KEY_ALIAS = "postomat_siz_smtp_key";
+    private static final String CONTROLLER_KEY_ALIAS = "postomat_controller_key";
     private static final String SMTP_HOST = "smtp.mail.ru";
     private static final int SMTP_PORT = 465;
     private WebView webView;
@@ -118,10 +122,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.47-RC1';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.48-RC2';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + productionRcPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + productionRcPatchScript() + autoStartConnectPatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -3623,6 +3627,160 @@ setTimeout(function(){
 """;
     }
 
+
+    private String autoStartConnectPatchScript() {
+        return """
+
+// ===== v3.48 RC2 secure stored controller credentials + automatic connect =====
+function rc2NativeReadyV348(){
+  return typeof NativeStore!=='undefined'
+    &&typeof NativeStore.hasControllerCredentials==='function'
+    &&typeof NativeStore.postomatAutoLogin==='function';
+}
+
+async function rc2AutoConnectV348(){
+  if(!rc2NativeReadyV348()){
+    showConnect(false);
+    return;
+  }
+
+  if(!NativeStore.hasControllerCredentials()){
+    showConnect(false);
+    return;
+  }
+
+  const address=String(NativeStore.getControllerAddress()||'http://10.10.10.1');
+  db.settings.address=address;
+  saveDb();
+
+  render('<div class="centerScreen"><div class="panel connectPanel" style="max-width:620px;margin:40px auto;text-align:center">'
+    +'<div class="h1">Подключение к постамату</div>'
+    +'<p class="sub">Автоматически подключаюсь к контроллеру…</p>'
+    +'<div class="stateBig" style="margin-top:20px;color:#0f4f99">ПОДКЛЮЧЕНИЕ</div>'
+    +'<div class="sub">'+esc(address)+'</div>'
+    +'</div></div>');
+
+  try{
+    const data=rcParseNativeJsonV347(NativeStore.postomatAutoLogin(),'Авторизация');
+    if(!data.sid)throw new Error('Контроллер не вернул SID');
+
+    session.sid=String(data.sid);
+    session.apiRole=String(data.al==null?'':data.al);
+    session.connected=true;
+    session.mode='LIVE';
+    db.settings.mode='LIVE';
+
+    const cells=await apiCells();
+    if(!cells.length)throw new Error('Контроллер не вернул ни одной ячейки');
+
+    saveDb();
+    showBetaHome(false);
+  }catch(e){
+    session.sid=null;
+    session.connected=false;
+    render('<div class="centerScreen"><div class="panel connectPanel" style="max-width:620px;margin:40px auto">'
+      +'<div class="h1">Нет связи с постаматом</div>'
+      +'<p class="sub">'+esc(e&&e.message?e.message:String(e))+'</p>'
+      +'<div class="note" style="margin-top:14px">Проверьте сеть постамата. Приложение повторит подключение автоматически.</div>'
+      +'<button id="rc2Retry" class="btn primary block" style="margin-top:16px">ПОВТОРИТЬ СЕЙЧАС</button>'
+      +'<button id="rc2ChangeController" class="btn outline block" style="margin-top:8px">ИЗМЕНИТЬ ПОДКЛЮЧЕНИЕ</button>'
+      +'</div></div>');
+
+    const retry=byId('rc2Retry');
+    if(retry)retry.onclick=function(){rc2AutoConnectV348();};
+    const change=byId('rc2ChangeController');
+    if(change)change.onclick=function(){showConnect(false);};
+
+    clearTimeout(window.__rc2ReconnectTimer);
+    window.__rc2ReconnectTimer=setTimeout(function(){
+      if(!session.connected)rc2AutoConnectV348();
+    },5000);
+  }
+}
+
+showConnect=function(push=true){
+  if(push)setUi({screen:'connect',role:null,tab:null},true);
+  else uiState={screen:'connect',role:null,tab:null};
+
+  session.role=null;
+  session.user=null;
+  session.connected=false;
+  session.sid=null;
+  session.apiRole='';
+
+  const stored=rc2NativeReadyV348()&&NativeStore.hasControllerCredentials();
+  const address=stored
+    ?String(NativeStore.getControllerAddress()||'http://10.10.10.1')
+    :String(db.settings.address||'http://10.10.10.1');
+
+  render('<div class="centerScreen"><div class="panel connectPanel" style="max-width:620px;margin:28px auto">'
+    +'<div class="h1">'+(stored?'Настройка подключения':'Первичная настройка постамата')+'</div>'
+    +'<p class="sub">'+(stored
+      ?'Сохранённое подключение можно изменить. После сохранения приложение будет подключаться автоматически.'
+      :'Введите пароль контроллера один раз. Он будет зашифрован Android Keystore и больше запрашиваться не будет.')+'</p>'
+    +'<div class="field" style="margin-top:16px"><label>Адрес контроллера</label><input id="rcControllerAddr" class="input" data-vk="latin" value="'+esc(address)+'"></div>'
+    +'<div class="field"><label>Пароль штатного web-интерфейса</label><input id="rcControllerPassword" class="input" type="password" autocomplete="off" placeholder="'+(stored?'Оставьте пустым, чтобы не менять':'Введите пароль')+'"></div>'
+    +'<button id="rcConnectBtn" class="btn primary block" style="margin-top:14px">'+(stored?'СОХРАНИТЬ И ПОДКЛЮЧИТЬСЯ':'СОХРАНИТЬ И ПОДКЛЮЧИТЬСЯ')+'</button>'
+    +(stored?'<button id="rcForgetBtn" class="btn outline block" style="margin-top:8px">СБРОСИТЬ СОХРАНЁННОЕ ПОДКЛЮЧЕНИЕ</button>':'')
+    +'<div id="rcConnectMsg" class="sub" style="margin-top:12px"></div>'
+    +'</div></div>');
+
+  const back=byId('globalBack');if(back)back.style.display='none';
+
+  const btn=byId('rcConnectBtn');
+  if(btn)btn.onclick=async function(){
+    const addr=String(byId('rcControllerAddr').value||'').trim();
+    const pwd=String(byId('rcControllerPassword').value||'');
+    btn.disabled=true;
+    byId('rcConnectMsg').textContent='Проверяю и сохраняю подключение…';
+    try{
+      if(!stored||pwd){
+        const test=await apiLogin(addr,pwd);
+        if(!test.sid)throw new Error('Контроллер не вернул SID');
+        if(!NativeStore.saveControllerCredentials(addr,pwd)){
+          throw new Error('Не удалось сохранить пароль в защищённом хранилище Android');
+        }
+      }else{
+        db.settings.address=addr;
+        saveDb();
+      }
+      await rc2AutoConnectV348();
+    }catch(e){
+      const msg=e&&e.message?e.message:String(e);
+      byId('rcConnectMsg').textContent='Ошибка: '+msg;
+      toast('Не удалось подключиться к постамату','error');
+    }finally{
+      btn.disabled=false;
+    }
+  };
+
+  const forget=byId('rcForgetBtn');
+  if(forget)forget.onclick=function(){
+    NativeStore.clearControllerCredentials();
+    session.sid=null;session.connected=false;
+    showConnect(false);
+  };
+};
+
+// override RC1 startup
+setTimeout(function(){
+  try{
+    clearTimeout(window.__rc2ReconnectTimer);
+    session.sid=null;
+    session.connected=false;
+    session.mode='LIVE';
+    db.settings.mode='LIVE';
+    saveDb();
+    rc2AutoConnectV348();
+  }catch(e){
+    console.error('RC2 startup',e);
+    showConnect(false);
+  }
+},60);
+
+""";
+    }
+
     private String escapeHtml(String x) {
         return x == null ? "" : x.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
@@ -3900,6 +4058,80 @@ setTimeout(function(){
     }
 
 
+
+    private SecretKey getOrCreateAesKey(String alias) throws Exception {
+        KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+        ks.load(null);
+        if (ks.containsAlias(alias)) {
+            SecretKey key = (SecretKey) ks.getKey(alias, null);
+            if (key != null) return key;
+        }
+        KeyGenerator gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(
+                alias,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build();
+        gen.init(spec);
+        return gen.generateKey();
+    }
+
+    private boolean storeControllerCredentials(String address, String password) {
+        try {
+            String root = normalizePostomatBase(address);
+            if (password == null || password.isEmpty()) return false;
+            SecretKey key = getOrCreateAesKey(CONTROLLER_KEY_ALIAS);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, key);
+            byte[] enc = cipher.doFinal(password.getBytes(StandardCharsets.UTF_8));
+            prefs.edit()
+                    .putString(PREF_CONTROLLER_ADDRESS, root)
+                    .putString(PREF_CONTROLLER_IV, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+                    .putString(PREF_CONTROLLER_SECRET, Base64.encodeToString(enc, Base64.NO_WRAP))
+                    .apply();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String controllerPassword() {
+        try {
+            String iv64 = prefs.getString(PREF_CONTROLLER_IV, "");
+            String sec64 = prefs.getString(PREF_CONTROLLER_SECRET, "");
+            if (iv64 == null || sec64 == null || iv64.isEmpty() || sec64.isEmpty()) return "";
+            KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+            ks.load(null);
+            SecretKey key = (SecretKey) ks.getKey(CONTROLLER_KEY_ALIAS, null);
+            if (key == null) return "";
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, key,
+                    new GCMParameterSpec(128, Base64.decode(iv64, Base64.DEFAULT)));
+            byte[] dec = cipher.doFinal(Base64.decode(sec64, Base64.DEFAULT));
+            return new String(dec, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private String controllerAddress() {
+        String x = prefs.getString(PREF_CONTROLLER_ADDRESS, "http://10.10.10.1");
+        return x == null || x.trim().isEmpty() ? "http://10.10.10.1" : x.trim();
+    }
+
+    private boolean controllerCredentialsReady() {
+        return !controllerPassword().isEmpty();
+    }
+
+    private void clearControllerCredentials() {
+        prefs.edit()
+                .remove(PREF_CONTROLLER_ADDRESS)
+                .remove(PREF_CONTROLLER_IV)
+                .remove(PREF_CONTROLLER_SECRET)
+                .apply();
+    }
+
     private String normalizePostomatBase(String base) throws Exception {
         String x = base == null ? "" : base.trim();
         while (x.endsWith("/")) x = x.substring(0, x.length() - 1);
@@ -3958,6 +4190,39 @@ setTimeout(function(){
     }
 
     public class NativeStoreBridge {
+
+        @JavascriptInterface public boolean saveControllerCredentials(String address, String password) {
+            return storeControllerCredentials(address, password);
+        }
+
+        @JavascriptInterface public boolean hasControllerCredentials() {
+            return controllerCredentialsReady();
+        }
+
+        @JavascriptInterface public String getControllerAddress() {
+            return controllerAddress();
+        }
+
+        @JavascriptInterface public void clearControllerCredentials() {
+            clearControllerCredentials();
+        }
+
+        @JavascriptInterface public String postomatAutoLogin() {
+            try {
+                String password = controllerPassword();
+                if (password.isEmpty()) {
+                    JSONObject o = new JSONObject();
+                    o.put("error", "NOT_CONFIGURED");
+                    return o.toString();
+                }
+                String root = controllerAddress();
+                String body = "password=" + URLEncoder.encode(password, "UTF-8");
+                return postomatHttp(root + "/api/login", "POST", body, "application/x-www-form-urlencoded");
+            } catch (Exception e) {
+                return postomatError(e);
+            }
+        }
+
         @JavascriptInterface public String postomatLogin(String base, String password) {
             try {
                 String root = normalizePostomatBase(base);
