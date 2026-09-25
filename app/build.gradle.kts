@@ -10,8 +10,8 @@ android {
         applicationId = "com.rsteel.postomatsiz.saftest"
         minSdk = 23
         targetSdk = 35
-        versionCode = 49
-        versionName = "3.49-RC3"
+        versionCode = 50
+        versionName = "3.50-RC4"
     }
 
     buildTypes {
