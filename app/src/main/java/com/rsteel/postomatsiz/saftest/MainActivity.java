@@ -123,10 +123,10 @@ public class MainActivity extends Activity {
             page = page.replace(">+ СИЗ<", ">Добавить СИЗ<");
             page = page.replace(">+ Назначение<", ">Добавить назначение<");
             page = page.replace(">+ Назначить СИЗ<", ">Добавить СИЗ<");
-            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.49-RC3';");
+            page = page.replace("const APP_VERSION='3.0-standard-classic-ui';", "const APP_VERSION='3.50-RC4';");
             page = page.replace(" placeholder=\"warehouse@company.kz\"", "");
             int scriptEnd = page.lastIndexOf("</script>");
-            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + productionRcPatchScript() + autoStartConnectPatchScript() + page.substring(scriptEnd);
+            if (scriptEnd >= 0) page = page.substring(0, scriptEnd) + uiPatchScript() + warehouseReportPatchScript() + smtpMailPatchScript() + readableReportPatchScript() + replenishmentDataFixPatchScript() + monthlyMovementPreviewPatchScript() + weeklyReportPreviewPatchScript() + simpleIssueReportsPatchScript() + issueLogFixPatchScript() + initialCatalogPatchScript() + warehouseReportsPatchScript() + operatorUserGridPatchScript() + operatorPinSelectionPatchScript() + operatorGuidedFlowPatchScript() + operatorConsumablesGridPatchScript() + operatorQtyStepperPatchScript() + operatorLayoutFixPatchScript() + productionRcPatchScript() + autoStartConnectPatchScript() + defectDeadlinePatchScript() + page.substring(scriptEnd);
             page = page.replace("Постомат СИЗ", "Постомат расходных материалов");
             page = page.replace("СИЗ", "Расходные материалы");
             return page;
@@ -3772,6 +3772,466 @@ setTimeout(function(){
     showConnect(false);
   }
 },60);
+
+""";
+    }
+
+
+    private String defectDeadlinePatchScript() {
+        return """
+
+// ===== v3.50 RC4 defect replacement + replenishment deadline =====
+(function initDefectDeadlineV350(){
+  if(!Array.isArray(db.defectLog))db.defectLog=[];
+  if(!db.settings)db.settings={};
+  let changed=false;
+  (db.ppe||[]).forEach(function(p){
+    if(p.replenishDays==null){p.replenishDays=0;changed=true;}
+  });
+  if(changed)saveDb();
+})();
+
+function replenishDaysV350(ppeId){
+  const p=ppe(ppeId);
+  return Math.max(0,Math.floor(Number(p&&p.replenishDays!=null?p.replenishDays:0)||0));
+}
+
+function replenishDueV350(ts,ppeId){
+  const days=replenishDaysV350(ppeId);
+  if(days<=0)return null;
+  const d=new Date(ts||nowIso());
+  if(isNaN(d.getTime()))return null;
+  d.setDate(d.getDate()+Math.max(0,days-1));
+  d.setHours(23,59,59,999);
+  return d;
+}
+
+function dueTextV350(value){
+  if(!value)return 'По стандартной логике';
+  const d=new Date(value);
+  if(isNaN(d.getTime()))return '—';
+  return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+
+function ensureIssueTaskV350(a,ts,reason,defectQty){
+  if(!a)return null;
+  const due=replenishDueV350(ts,a.ppeId);
+  if(!due)return null;
+
+  let t=(db.tasks||[]).find(function(x){
+    return x.assignmentId===a.id&&x.status==='OPEN';
+  });
+
+  if(!t){
+    t={
+      id:uid('TASK'),
+      assignmentId:a.id,
+      cellId:a.cellId,
+      ppeId:a.ppeId,
+      created:ts||nowIso(),
+      due:due.toISOString(),
+      status:'OPEN',
+      reason:reason||'Выдача',
+      defectQty:Math.max(0,Number(defectQty||0))
+    };
+    db.tasks.push(t);
+  }else{
+    const oldDue=t.due?new Date(t.due):null;
+    if(!oldDue||isNaN(oldDue.getTime())||due<oldDue)t.due=due.toISOString();
+    const r=String(t.reason||'');
+    if(reason&&r.indexOf(reason)<0)t.reason=r?r+' / '+reason:reason;
+    if(defectQty)t.defectQty=Math.max(0,Number(t.defectQty||0))+Math.max(0,Number(defectQty||0));
+  }
+  return t;
+}
+
+// --- Admin: replenishment deadline in consumable catalog ---
+adminPpe=function(){
+  const cards=(db.ppe||[]).map(function(p){
+    const aa=db.assignments.filter(function(a){return a.ppeId===p.id&&a.active;});
+    const stock=aa.reduce(function(s,a){return s+Number(a.stock||0);},0);
+    const days=Math.max(0,Number(p.replenishDays||0));
+    return '<div class="miniCard">'
+      +'<div class="row"><h4>'+esc(p.name)+'</h4><span class="badge '+(p.active?'':'gray')+'">'+(p.active?'АКТИВЕН':'АРХИВ')+'</span></div>'
+      +'<p>Единица: <b>'+esc(p.unit)+'</b><br>Назначено сотрудникам: '+aa.length+'<br>Суммарный остаток: '+stock
+      +'<br>Срок пополнения: <b>'+(days?days+' дн.':'по стандартной логике')+'</b></p>'
+      +'<div class="actions"><button class="btn small outline" data-edit-ppe="'+p.id+'">Изменить</button>'
+      +'<button class="btn small '+(p.active?'red':'green')+'" data-toggle-ppe="'+p.id+'">'+(p.active?'Убрать из списка':'Вернуть')+'</button></div>'
+      +'</div>';
+  }).join('');
+  return adminHeader(
+    'Справочник расходных материалов',
+    'Для каждого расходного материала можно задать крайний срок восполнения после фактической выдачи.',
+    '<button id="addPpe" class="btn primary">Добавить расходный материал</button>'
+  )+'<div class="listCards">'+(cards||'<div class="empty">Справочник пуст</div>')+'</div>';
+};
+
+ppeModal=function(p=null){
+  const days=Math.max(0,Number(p&&p.replenishDays!=null?p.replenishDays:0));
+  modal(
+    '<h3>'+(p?'Изменить расходный материал':'Новый расходный материал')+'</h3>'
+    +'<div class="field"><label>Наименование</label><input id="mPname" class="input" data-vk="text" value="'+esc(p?p.name:'')+'"></div>'
+    +'<div class="field"><label>Единица измерения</label><input id="mUnit" class="input" data-vk="text" value="'+esc(p&&p.unit?p.unit:'шт.')+'"></div>'
+    +'<div class="field"><label>Срок пополнения после выдачи, дней</label><input id="mReplDaysV350" class="input" data-vk="number" value="'+days+'"></div>'
+    +'<div class="note" style="margin-top:10px"><b>Пример:</b> значение 5 означает: если сотрудник получил материал в понедельник, крайний срок пополнения — пятница. Значение 0 сохраняет прежнюю логику Min/Max.</div>'
+    +'<div class="footer"><button class="btn outline" id="mCancel">Отмена</button><button class="btn primary" id="mSave">Сохранить</button></div>',
+    function(){
+      byId('mCancel').onclick=closeModal;
+      byId('mSave').onclick=function(){
+        const name=String(byId('mPname').value||'').trim();
+        const unit=String(byId('mUnit').value||'').trim()||'шт.';
+        const repl=Math.max(0,Math.floor(Number(byId('mReplDaysV350').value||0)));
+        if(!name){toast('Введите наименование','error');return;}
+
+        if(p){
+          const before=JSON.stringify(p);
+          p.name=name;p.unit=unit;p.replenishDays=repl;
+          audit('Изменён расходный материал',before,JSON.stringify(p));
+        }else{
+          const n={id:uid('PPE'),name:name,unit:unit,replenishDays:repl,active:true};
+          db.ppe.push(n);
+          audit('Добавлен расходный материал','',JSON.stringify(n));
+        }
+        saveDb();
+        closeModal();
+        showAdmin('ppe');
+      };
+    }
+  );
+};
+
+// --- Defect journal ---
+adminIssueLog=function(){
+  if(!Array.isArray(db.defectLog))db.defectLog=[];
+
+  const rows=[];
+  (db.issueLog||[]).forEach(function(x){
+    rows.push({
+      ts:x.ts,
+      html:(function(){
+        const dt=issueDateTime(x.ts);
+        const type=x.issueType||'Обычная';
+        return '<tr>'
+          +'<td>'+dt.date+'</td><td>'+dt.time+'</td><td>'+esc(x.userName||'—')+'</td><td>№'+esc(x.cellId)+'</td>'
+          +'<td>'+esc(x.ppeName||x.ppeId||'—')+'</td><td>'+x.before+'</td><td><b>'+x.qty+'</b></td>'
+          +'<td>'+(Number(x.defectQty||0)>0?'<b>'+Number(x.defectQty||0)+'</b>':'—')+'</td>'
+          +'<td>'+x.after+'</td><td>'+esc(type)+'</td><td class="statusOk">'+esc(x.status||'Подтверждено')+'</td>'
+          +'</tr>';
+      })()
+    });
+  });
+
+  (db.defectLog||[]).forEach(function(x){
+    rows.push({
+      ts:x.ts,
+      html:(function(){
+        const dt=issueDateTime(x.ts);
+        return '<tr>'
+          +'<td>'+dt.date+'</td><td>'+dt.time+'</td><td>'+esc(x.userName||'—')+'</td><td>№'+esc(x.cellId)+'</td>'
+          +'<td>'+esc(x.ppeName||x.ppeId||'—')+'</td><td>—</td><td>—</td><td><b>'+Number(x.qty||0)+'</b></td>'
+          +'<td>—</td><td>Брак</td><td class="statusOk">'+esc(x.status||'Брак зафиксирован')+'</td>'
+          +'</tr>';
+      })()
+    });
+  });
+
+  rows.sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});
+
+  return adminHeader(
+    'Журнал выдачи',
+    'Обычные получения и зарегистрированный брак расходных материалов.'
+  )+'<div class="tableWrap"><table class="table"><thead><tr>'
+    +'<th>Дата</th><th>Время</th><th>Пользователь</th><th>Ячейка</th><th>Расходный материал</th>'
+    +'<th>Было</th><th>Получено</th><th>Брак</th><th>Осталось</th><th>Тип</th><th>Статус</th>'
+    +'</tr></thead><tbody>'
+    +(rows.length?rows.map(function(x){return x.html;}).join(''):'<tr><td colspan="11" class="empty">Операций пока нет</td></tr>')
+    +'</tbody></table></div>';
+};
+
+// --- Operator defect flow ---
+function defectAssignmentsV350(){
+  if(!session.user)return [];
+  return db.assignments.filter(function(a){
+    return a.active&&Number(a.cellId)===Number(session.user.cellId)&&ppe(a.ppeId)&&ppe(a.ppeId).active;
+  });
+}
+
+function openDefectModalV350(){
+  const arr=defectAssignmentsV350();
+  if(!arr.length){
+    toast('Для сотрудника не назначены расходные материалы','error');
+    return;
+  }
+
+  const options=arr.map(function(a){
+    const p=ppe(a.ppeId);
+    return '<option value="'+a.id+'">'+esc(p?p.name:a.ppeId)+'</option>';
+  }).join('');
+
+  modal(
+    '<h3>Зафиксировать брак</h3>'
+    +'<p class="sub">Выберите расходный материал, в котором обнаружен брак. После фиксации приложение автоматически подготовит его замену.</p>'
+    +'<div class="field"><label>Расходный материал</label><select id="defectAidV350" class="select">'+options+'</select></div>'
+    +'<div class="field"><label>Количество брака</label><input id="defectQtyV350" class="input" data-vk="number" value="1"></div>'
+    +'<div class="footer"><button class="btn outline" id="defectCancelV350">Отмена</button><button class="btn red" id="defectSaveV350">БРАК</button></div>',
+    function(){
+      byId('defectCancelV350').onclick=closeModal;
+      byId('defectSaveV350').onclick=function(){
+        const aid=String(byId('defectAidV350').value||'');
+        const a=db.assignments.find(function(x){return x.id===aid;});
+        const q=Math.max(1,Math.floor(Number(byId('defectQtyV350').value||1)));
+        if(!a){toast('Не найдено назначение расходного материала','error');return;}
+
+        const p=ppe(a.ppeId);
+        if(!Array.isArray(db.defectLog))db.defectLog=[];
+        const rec={
+          id:uid('DEF'),
+          ts:nowIso(),
+          userId:session.user.id,
+          userName:session.user.name,
+          cellId:a.cellId,
+          assignmentId:a.id,
+          ppeId:a.ppeId,
+          ppeName:p?p.name:a.ppeId,
+          qty:q,
+          status:'Брак зафиксирован'
+        };
+        db.defectLog.unshift(rec);
+
+        window.__defectReplacementV350={
+          defectId:rec.id,
+          userId:session.user.id,
+          assignmentId:a.id,
+          qty:q
+        };
+
+        saveDb();
+        closeModal();
+        showOperator(false);
+        toast('Брак зафиксирован. Получите замену.','ok');
+      };
+    }
+  );
+}
+
+function applyPendingDefectV350(){
+  const pending=window.__defectReplacementV350;
+  if(!pending||!session.user||pending.userId!==session.user.id)return;
+
+  const a=db.assignments.find(function(x){return x.id===pending.assignmentId;});
+  if(!a)return;
+  const inp=document.querySelector('.issueQty[data-aid="'+a.id+'"]');
+  if(!inp)return;
+
+  const stock=Math.max(0,Number(a.stock||0));
+  if(stock<=0){
+    const hint=byId('flowHint');
+    if(hint)hint.textContent='Брак зафиксирован, но замена сейчас недоступна: в ячейке нет остатка.';
+    return;
+  }
+
+  const q=Math.min(stock,Math.max(1,Number(pending.qty||1)));
+
+  const row=inp.closest('.qtyRow');
+  if(row){
+    const old=row.querySelector('.qtyStepperV345');
+    if(old)old.remove();
+  }
+  delete inp.dataset.stepperV345;
+  inp.disabled=false;
+  inp.max=String(q);
+  inp.value=String(q);
+  inp.style.display='';
+  inp.tabIndex=0;
+
+  if(typeof updateIssueSummary==='function')updateIssueSummary();
+  if(typeof applyQtyStepperV345==='function')applyQtyStepperV345();
+  if(typeof syncOperatorOpenButtonV340==='function')syncOperatorOpenButtonV340();
+
+  const hint=byId('flowHint');
+  if(hint)hint.textContent='Замена брака подготовлена. Откройте ячейку, возьмите выбранный расходный материал и закройте дверцу.';
+}
+
+function enhanceDefectButtonV350(){
+  if(byId('operatorDefectV350'))return;
+  const head=document.querySelector('.contentHead .right');
+  if(!head)return;
+
+  const b=document.createElement('button');
+  b.id='operatorDefectV350';
+  b.className='btn red';
+  b.textContent='БРАК';
+  b.onclick=openDefectModalV350;
+  head.insertBefore(b,head.firstChild);
+}
+
+const __showOperatorV350=showOperator;
+showOperator=function(push=true){
+  __showOperatorV350(push);
+  enhanceDefectButtonV350();
+  applyPendingDefectV350();
+};
+
+// Final issue confirmation with deadline task and defect linkage.
+confirmIssue=function(){
+  if(!session.flow||!session.flow.closed){
+    toast('Сначала закройте ячейку','error');
+    return;
+  }
+
+  const selected=Object.entries(issueSelection)
+    .map(function(x){
+      const a=db.assignments.find(function(z){return z.id===x[0];});
+      return {a:a,q:Math.max(0,Number(x[1]||0))};
+    })
+    .filter(function(x){return x.a&&x.q>0;});
+
+  if(!selected.length){
+    toast('Нет выбранных расходных материалов','error');
+    return;
+  }
+
+  for(const x of selected){
+    if(x.q>Number(x.a.stock||0)){
+      toast('Остаток изменился. Обновите экран и повторите получение.','error');
+      return;
+    }
+  }
+
+  const pending=window.__defectReplacementV350;
+  const rows=selected.map(function(x){
+    const p=ppe(x.a.ppeId);
+    const isDef=!!(pending&&pending.userId===session.user.id&&pending.assignmentId===x.a.id);
+    return '<div class="summaryLine"><span>'+esc(p?p.name:x.a.ppeId)+(isDef?' <b>• замена брака</b>':'')+'</span><b>'+x.q+'</b></div>';
+  }).join('');
+
+  confirmModal('Подтвердить получение?',rows,'ПОДТВЕРДИТЬ',function(){
+    const tx=uid('ISS');
+    const ts=nowIso();
+    let logged=0;
+
+    selected.forEach(function(x){
+      const a=x.a,q=x.q;
+      const before=Number(a.stock||0);
+      const after=Math.max(0,before-q);
+      const isDef=!!(pending&&pending.userId===session.user.id&&pending.assignmentId===a.id);
+      const defectQty=isDef?Math.min(q,Math.max(0,Number(pending.qty||0))):0;
+
+      a.stock=after;
+
+      db.issueLog.unshift({
+        id:uid('L'),
+        tx:tx,
+        ts:ts,
+        userId:session.user.id,
+        userName:session.user.name,
+        cellId:a.cellId,
+        ppeId:a.ppeId,
+        ppeName:ppe(a.ppeId)?ppe(a.ppeId).name:a.ppeId,
+        before:before,
+        qty:q,
+        defectQty:defectQty,
+        defectId:isDef?pending.defectId:null,
+        issueType:isDef?'Замена брака':'Обычная',
+        after:after,
+        status:'Подтверждено'
+      });
+
+      ensureIssueTaskV350(a,ts,isDef?'Брак':'Выдача',defectQty);
+
+      if(isDef&&Array.isArray(db.defectLog)){
+        const d=db.defectLog.find(function(z){return z.id===pending.defectId;});
+        if(d){
+          d.status=defectQty>=Number(d.qty||0)?'Заменён':'Заменён частично';
+          d.replacementTx=tx;
+          d.replacementAt=ts;
+          d.replacementQty=defectQty;
+        }
+      }
+      logged++;
+    });
+
+    saveDb();
+    syncTasks();
+    saveDb();
+
+    session.flow=null;
+    issueSelection={};
+    if(pending)window.__defectReplacementV350=null;
+
+    toast(logged>0?'Получение зарегистрировано':'Ошибка: получение не записано',logged>0?'ok':'error');
+    showOperator();
+  });
+};
+
+// --- Warehouse operational replenishment report with deadline and defect reason ---
+warehouseReplenishmentReport=function(){
+  ensureWarehouseData();
+  const groups=whQueueGroups();
+  const now=new Date();
+  const pad=function(n){return String(n).padStart(2,'0');};
+  const stamp=pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear()+' '+pad(now.getHours())+':'+pad(now.getMinutes());
+
+  const flat=[];
+  groups.forEach(function(g){
+    g.tasks.forEach(function(t){
+      const a=t.a;
+      if(!a)return;
+      flat.push({
+        t:t,
+        a:a,
+        cellId:g.cellId,
+        due:t.due?new Date(t.due):null
+      });
+    });
+  });
+
+  flat.sort(function(x,y){
+    const xd=x.due&&!isNaN(x.due.getTime())?x.due.getTime():Number.MAX_SAFE_INTEGER;
+    const yd=y.due&&!isNaN(y.due.getTime())?y.due.getTime():Number.MAX_SAFE_INTEGER;
+    if(xd!==yd)return xd-yd;
+    return Number(x.cellId)-Number(y.cellId);
+  });
+
+  let totalQty=0;
+  const lines=[];
+  lines.push('ОПЕРАТИВНЫЙ ОТЧЁТ О ВОСПОЛНЕНИИ РАСХОДНЫХ МАТЕРИАЛОВ');
+  lines.push('Сформирован: '+stamp);
+  lines.push('');
+
+  if(!flat.length){
+    lines.push('На момент формирования отчёта восполнение не требуется.');
+  }else{
+    flat.forEach(function(x,idx){
+      const c=cell(x.cellId);
+      const o=ownerOfCell(x.cellId);
+      const p=ppe(x.a.ppeId);
+      const need=Math.max(0,Number(x.a.target||0)-Number(x.a.stock||0));
+      totalQty+=need;
+
+      const due=x.t.due?dueTextV350(x.t.due):'По стандартной логике';
+      const overdue=x.t.due&&new Date(x.t.due)<now;
+      const reason=String(x.t.reason||'Пополнение');
+      const defectQty=Math.max(0,Number(x.t.defectQty||0));
+
+      lines.push((idx+1)+'. '+(c&&c.name?c.name:'Ячейка №'+x.cellId)+' — '+(o&&o.name?o.name:'Сотрудник не назначен'));
+      lines.push('   '+(p&&p.name?p.name:x.a.ppeId));
+      lines.push('   Сейчас: '+x.a.stock+' • Max: '+x.a.target+' • Добавить: '+need);
+      lines.push('   Пополнить до: '+(overdue?'ПРОСРОЧЕНО — ':'')+due);
+      lines.push('   Причина: '+reason+(defectQty?' • Брак: '+defectQty:''));
+      lines.push('');
+    });
+
+    lines.push('ИТОГО');
+    lines.push('Позиций к пополнению: '+flat.length);
+    lines.push('Единиц к пополнению: '+totalQty);
+  }
+
+  return {
+    subject:'Постомат — оперативный отчёт о восполнении — '+pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear(),
+    body:lines.join(String.fromCharCode(10))
+  };
+};
 
 """;
     }
