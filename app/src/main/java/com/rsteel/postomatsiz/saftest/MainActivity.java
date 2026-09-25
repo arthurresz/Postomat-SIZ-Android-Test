@@ -4199,9 +4199,23 @@ warehouseReplenishmentReport=function(){
   lines.push('Сформирован: '+stamp);
   lines.push('');
 
-  if(!flat.length){
+  const pendingDefects=(Array.isArray(db.defectLog)?db.defectLog:[])
+    .filter(function(x){return String(x.status||'').indexOf('Заменён')!==0;})
+    .sort(function(a,b){return new Date(a.ts)-new Date(b.ts);});
+
+  if(pendingDefects.length){
+    lines.push('БРАК, ЗАМЕНА ЕЩЁ НЕ ПОДТВЕРЖДЕНА');
+    pendingDefects.forEach(function(x){
+      const due=replenishDueV350(x.ts,x.ppeId);
+      lines.push('• Ячейка №'+x.cellId+' — '+(x.userName||'—')+' — '+(x.ppeName||x.ppeId||'—'));
+      lines.push('  Брак: '+Number(x.qty||0)+' • Пополнить до: '+(due?dueTextV350(due):'по стандартной логике'));
+    });
+    lines.push('');
+  }
+
+  if(!flat.length&&!pendingDefects.length){
     lines.push('На момент формирования отчёта восполнение не требуется.');
-  }else{
+  }else if(flat.length){
     flat.forEach(function(x,idx){
       const c=cell(x.cellId);
       const o=ownerOfCell(x.cellId);
